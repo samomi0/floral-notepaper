@@ -1762,6 +1762,24 @@ export function MainWindow({
           </div>
           <div className="flex items-center">
             <button
+              onClick={handleNewNote}
+              className="w-10 h-11 flex items-center justify-center text-ink-ghost hover:text-bamboo hover:bg-bamboo-mist/50 transition-all cursor-pointer group"
+              title={t("main.sidebar.newNote", { defaultValue: "新建笔记" })}
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                className="group-hover:rotate-90 transition-transform duration-200"
+              >
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+            </button>
+            <button
               onClick={() => void handleOpenNotepad()}
               className="w-10 h-11 flex items-center justify-center text-ink-ghost hover:text-bamboo hover:bg-bamboo-mist/50 transition-all cursor-pointer"
               title={t("main.window.quickNotepad", { defaultValue: "快捷便签" })}
@@ -1778,6 +1796,26 @@ export function MainWindow({
               >
                 <path d="M4 4h16v14H7l-3 3V4z" />
                 <path d="M8 9h8M8 13h5" />
+              </svg>
+            </button>
+            <button
+              onClick={() => void handleImportNote()}
+              className="w-10 h-11 flex items-center justify-center text-ink-ghost hover:text-bamboo hover:bg-bamboo-mist/50 transition-all cursor-pointer group"
+              title={t("main.sidebar.importMarkdown", { defaultValue: "导入 Markdown" })}
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M12 3v12" />
+                <path d="m7 10 5 5 5-5" />
+                <path d="M5 21h14" />
               </svg>
             </button>
             <button
@@ -1971,47 +2009,6 @@ export function MainWindow({
                     </button>
                   )}
                 </div>
-              </div>
-
-              <div className="px-3 pb-2 shrink-0 space-y-1">
-                <button
-                  onClick={handleNewNote}
-                  className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[12px] font-body text-bamboo hover:bg-bamboo-mist/60 transition-all cursor-pointer group"
-                >
-                  <svg
-                    width="13"
-                    height="13"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2.5"
-                    strokeLinecap="round"
-                    className="group-hover:rotate-90 transition-transform duration-200"
-                  >
-                    <path d="M12 5v14M5 12h14" />
-                  </svg>
-                  <span>{t("main.sidebar.newNote", { defaultValue: "新建笔记" })}</span>
-                </button>
-                <button
-                  onClick={() => void handleImportNote()}
-                  className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[12px] font-body text-ink-faint hover:text-bamboo hover:bg-bamboo-mist/50 transition-all cursor-pointer group"
-                >
-                  <svg
-                    width="13"
-                    height="13"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2.2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <path d="M12 3v12" />
-                    <path d="m7 10 5 5 5-5" />
-                    <path d="M5 21h14" />
-                  </svg>
-                  <span>{t("main.sidebar.importMarkdown", { defaultValue: "导入 Markdown" })}</span>
-                </button>
               </div>
 
               <div className="flex items-center justify-between px-5 pb-1.5 shrink-0">
