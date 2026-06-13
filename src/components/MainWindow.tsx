@@ -3229,7 +3229,7 @@ export function MainWindow({
         >
           <button
             onClick={() => setImagePreview(null)}
-            className="absolute top-4 right-4 w-9 h-9 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-white/80 hover:text-white transition-colors cursor-pointer z-10"
+            className="absolute top-4 right-4 w-9 h-9 flex items-center justify-center rounded-full bg-black/50 hover:bg-black/70 text-white shadow-lg ring-1 ring-white/20 transition-colors cursor-pointer z-[10001]"
             title={t("common.close", { defaultValue: "关闭" })}
           >
             <svg
