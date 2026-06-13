@@ -32,7 +32,6 @@ import type {
 } from "../features/update/types";
 import { BackgroundLayer } from "./BackgroundLayer";
 import { SettingsPanel } from "./SettingsPanel";
-import { SlidingButtonGroup } from "./SlidingButtonGroup";
 import {
   createNote,
   createCategory,
@@ -495,23 +494,6 @@ export function MainWindow({
         title: t("main.toolbar.blockMath", { defaultValue: "块级公式" }),
         style: "font-mono text-[11px]",
         action: "blockMath",
-      },
-    ],
-    [t],
-  );
-  const viewModeOptions = useMemo(
-    () => [
-      {
-        value: "edit" as ViewMode,
-        label: t("settings.defaultView.edit", { defaultValue: "编辑" }),
-      },
-      {
-        value: "split" as ViewMode,
-        label: t("settings.defaultView.split", { defaultValue: "分栏" }),
-      },
-      {
-        value: "preview" as ViewMode,
-        label: t("settings.defaultView.preview", { defaultValue: "预览" }),
       },
     ],
     [t],
@@ -1704,6 +1686,14 @@ export function MainWindow({
     }
   };
 
+  const handleCycleViewMode = () => {
+    setViewMode((current) => {
+      if (current === "edit") return "split";
+      if (current === "split") return "preview";
+      return "edit";
+    });
+  };
+
   const selectedTilePinned = selectedId ? pinnedTileIds.has(selectedId) : false;
 
   const toggleMaximize = () => {
@@ -2486,32 +2476,6 @@ export function MainWindow({
                 <div className="h-4 w-px bg-paper-deep/30 mx-1" />
 
                 <button
-                  onClick={() => void handlePinEntry()}
-                  disabled={!selectedId}
-                  aria-label={pinTileButtonTitle(selectedTilePinned)}
-                  className={`w-7 h-7 flex items-center justify-center rounded-lg transition-all cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed ${
-                    selectedTilePinned
-                      ? "text-bamboo bg-bamboo-mist/40 hover:text-red-400 hover:bg-danger-bg"
-                      : "text-ink-ghost hover:text-bamboo hover:bg-bamboo-mist/50"
-                  }`}
-                  title={pinTileButtonTitle(selectedTilePinned)}
-                >
-                  <svg
-                    width="13"
-                    height="13"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <path d="M12 17v5" />
-                    <path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 1 1 0 0 0 1-1V4a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1 1 1 0 0 1 1 1z" />
-                  </svg>
-                </button>
-
-                <button
                   onMouseDown={(event) => event.preventDefault()}
                   onClick={handleUndo}
                   disabled={!selectedId}
@@ -2563,12 +2527,102 @@ export function MainWindow({
                 </button>
 
                 <button
+                  onClick={() => void handlePinEntry()}
+                  disabled={!selectedId}
+                  aria-label={pinTileButtonTitle(selectedTilePinned)}
+                  className={`w-7 h-7 flex items-center justify-center rounded-lg transition-all cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed ${
+                    selectedTilePinned
+                      ? "text-bamboo bg-bamboo-mist/40 hover:text-red-400 hover:bg-danger-bg"
+                      : "text-ink-ghost hover:text-bamboo hover:bg-bamboo-mist/50"
+                  }`}
+                  title={pinTileButtonTitle(selectedTilePinned)}
+                >
+                  <svg
+                    width="13"
+                    height="13"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M12 17v5" />
+                    <path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 1 1 0 0 0 1-1V4a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1 1 1 0 0 1 1 1z" />
+                  </svg>
+                </button>
+
+                <button
+                  onClick={handleCycleViewMode}
+                  disabled={!selectedId}
+                  className="w-7 h-7 flex items-center justify-center rounded-lg text-ink-ghost hover:text-bamboo hover:bg-bamboo-mist/50 transition-all cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+                  title={t("main.editor.cycleViewMode", { defaultValue: "模式切换" })}
+                >
+                  {viewMode === "edit" ? (
+                    <svg
+                      width="13"
+                      height="13"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
+                    </svg>
+                  ) : viewMode === "split" ? (
+                    <svg
+                      width="13"
+                      height="13"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" />
+                      <polyline points="14 2 14 8 20 8" />
+                      <path d="M10 13l-1.5 1.5L7 13" />
+                    </svg>
+                  ) : (
+                    <svg
+                      width="13"
+                      height="13"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                      <circle cx="12" cy="12" r="3" />
+                    </svg>
+                  )}
+                </button>
+
+                <button
                   onClick={() => void saveCurrentNote(true)}
                   disabled={!selectedId || saveState === "saving"}
-                  className="px-2.5 h-7 flex items-center justify-center rounded-lg text-[11px] text-ink-ghost hover:text-ink-faint hover:bg-paper-warm transition-all cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+                  className="w-7 h-7 flex items-center justify-center rounded-lg text-ink-ghost hover:text-ink-faint hover:bg-paper-warm transition-all cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
                   title={t("common.save", { defaultValue: "保存" })}
                 >
-                  {t("common.save", { defaultValue: "保存" })}
+                  <svg
+                    width="13"
+                    height="13"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+                    <polyline points="17 21 17 13 7 13 7 21" />
+                    <polyline points="7 3 7 8 15 8" />
+                  </svg>
                 </button>
 
                 {deleteConfirm ? (
@@ -2629,13 +2683,6 @@ export function MainWindow({
                   </button>
                 )}
               </div>
-
-              <SlidingButtonGroup
-                options={viewModeOptions}
-                value={viewMode}
-                onChange={setViewMode}
-                buttonClassName="px-3 py-1"
-              />
             </div>
 
             <div

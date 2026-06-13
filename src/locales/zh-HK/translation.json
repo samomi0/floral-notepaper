@@ -91,7 +91,8 @@
       "undo": "還原（Ctrl+Z）",
       "undoLabel": "還原",
       "redo": "重做（Ctrl+Y）",
-      "redoLabel": "重做"
+      "redoLabel": "重做",
+      "cycleViewMode": "模式切換"
     },
     "externalFile": {
       "label": "外部檔案 · {{path}}"
