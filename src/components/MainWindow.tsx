@@ -3,7 +3,7 @@ import type { MouseEvent } from "react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { emit, listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { convertFileSrc } from "@tauri-apps/api/core";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { AboutPanel } from "./AboutPanel";
 import { exportMarkdownNote, importMarkdownNote } from "../features/importExport/api";
@@ -545,8 +545,10 @@ export function MainWindow({
     const paths: string[] = [];
     let match: RegExpExecArray | null;
     while ((match = regex.exec(content)) !== null) {
-      if (!paths.includes(match[1])) {
-        paths.push(match[1]);
+      // Extract only the URL part (before any space/title)
+      const url = match[1].split(/\s+/)[0];
+      if (url && !paths.includes(url)) {
+        paths.push(url);
       }
     }
     return paths;
@@ -2887,6 +2889,40 @@ export function MainWindow({
                                   alt={imgPath}
                                   className="w-[128px] h-[128px] object-cover"
                                   loading="lazy"
+                                  onContextMenu={async (e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    showToast("复制中…", "info");
+                                    try {
+                                      if (imageBaseDir) {
+                                        const normalized = imgPath.replace(/\\/g, "/");
+                                        await invoke("clipboard_write_image", {
+                                          path: `${imageBaseDir}/${normalized}`,
+                                        });
+                                      } else {
+                                        const src = resolveImagePath(imgPath) ?? imgPath;
+                                        const response = await fetch(src);
+                                        if (!response.ok) throw new Error("fetch failed");
+                                        const blob = await response.blob();
+                                        await navigator.clipboard.write([
+                                          new ClipboardItem({ [blob.type || "image/png"]: blob }),
+                                        ]);
+                                      }
+                                      showToast(
+                                        t("main.editor.imageCopied", {
+                                          defaultValue: "图像已复制到剪贴板",
+                                        }),
+                                        "success",
+                                      );
+                                    } catch {
+                                      showToast(
+                                        t("main.editor.imageCopyFailed", {
+                                          defaultValue: "复制图像失败",
+                                        }),
+                                        "error",
+                                      );
+                                    }
+                                  }}
                                 />
                               </button>
                             ))}

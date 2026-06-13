@@ -93,7 +93,9 @@
       "undoLabel": "Undo",
       "redo": "Redo (Ctrl+Y)",
       "redoLabel": "Redo",
-      "cycleViewMode": "Switch Mode"
+      "cycleViewMode": "Switch Mode",
+      "imageCopied": "Image copied to clipboard",
+      "imageCopyFailed": "Failed to copy image"
     },
     "externalFile": {
       "label": "External File · {{path}}"

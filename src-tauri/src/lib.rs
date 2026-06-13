@@ -10,6 +10,32 @@ use std::{env, fs, io::Write, path::PathBuf};
 use tauri::{AppHandle, Emitter, Manager};
 
 #[tauri::command]
+fn clipboard_write_image(path: String) -> Result<(), AppError> {
+    let img = image::open(&path)
+        .map_err(|e| AppError::new("imageOpenFailed", format!("Failed to open image: {e}")))?;
+    let rgba = img.to_rgba8();
+    let (width, height) = rgba.dimensions();
+    let img_data = arboard::ImageData {
+        width: width as usize,
+        height: height as usize,
+        bytes: std::borrow::Cow::Borrowed(rgba.as_raw()),
+    };
+    let mut clipboard = arboard::Clipboard::new().map_err(|e| {
+        AppError::new(
+            "clipboardOpenFailed",
+            format!("Failed to open clipboard: {e}"),
+        )
+    })?;
+    clipboard.set_image(img_data).map_err(|e| {
+        AppError::new(
+            "clipboardSetFailed",
+            format!("Failed to set clipboard image: {e}"),
+        )
+    })?;
+    Ok(())
+}
+
+#[tauri::command]
 fn app_name() -> Result<String, AppError> {
     let locale = Locale::from_tag(&default_store()?.load_config()?.locale);
     Ok(locales::app_name(locale).to_string())
@@ -424,6 +450,7 @@ pub fn run() {
         .on_window_event(desktop::handle_window_event)
         .invoke_handler(tauri::generate_handler![
             app_name,
+            clipboard_write_image,
             notes_list,
             notes_get,
             notes_create,

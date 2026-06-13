@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 export interface ToastItem {
   id: number;
   message: string;
-  type?: "error" | "warning" | "info";
+  type?: "error" | "warning" | "info" | "success";
 }
 
 let nextId = 0;
@@ -17,6 +17,12 @@ const AUTO_DISMISS_MS = 5000;
 const EXIT_DURATION_MS = 200;
 
 const iconPaths: Record<NonNullable<ToastItem["type"]>, React.ReactNode> = {
+  success: (
+    <>
+      <circle cx="12" cy="12" r="10" />
+      <polyline points="8 12 11 15 16 9" />
+    </>
+  ),
   warning: (
     <>
       <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
@@ -41,6 +47,7 @@ const iconPaths: Record<NonNullable<ToastItem["type"]>, React.ReactNode> = {
 };
 
 const iconColor: Record<NonNullable<ToastItem["type"]>, string> = {
+  success: "text-bamboo",
   error: "text-red-400",
   warning: "text-amber-400",
   info: "text-ink-faint",

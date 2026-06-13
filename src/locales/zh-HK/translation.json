@@ -93,7 +93,9 @@
       "undoLabel": "還原",
       "redo": "重做（Ctrl+Y）",
       "redoLabel": "重做",
-      "cycleViewMode": "模式切換"
+      "cycleViewMode": "模式切換",
+      "imageCopied": "圖像已複製到剪貼板",
+      "imageCopyFailed": "複製圖像失敗"
     },
     "externalFile": {
       "label": "外部檔案 · {{path}}"
