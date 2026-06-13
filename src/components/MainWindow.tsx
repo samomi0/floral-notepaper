@@ -352,6 +352,9 @@ export function MainWindow({
   const [pinnedTileIds, setPinnedTileIds] = useState<Set<string>>(new Set());
   const [categories, setCategories] = useState<string[]>([]);
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
+  const [filterCategories, setFilterCategories] = useState<Set<string> | null>(null);
+  const [filterPickerOpen, setFilterPickerOpen] = useState(false);
+  const filterPickerRef = useRef<HTMLButtonElement>(null);
   const [activeCategory, setActiveCategory] = useState<string>("");
   const [showCategoryInput, setShowCategoryInput] = useState(false);
   const [categoryInputValue, setCategoryInputValue] = useState("");
@@ -1030,6 +1033,7 @@ export function MainWindow({
       setNoteMenuClosing(true);
       setCategoryMenuClosing(true);
       setCategoryPickerOpen(false);
+      setFilterPickerOpen(false);
     }
 
     function handleKeyDown(event: KeyboardEvent) {
@@ -1562,6 +1566,39 @@ export function MainWindow({
     });
   };
 
+  const handleToggleAllCollapse = () => {
+    if (collapsedCategories.size === 0) {
+      // All expanded → collapse all
+      setCollapsedCategories(new Set(categories));
+    } else {
+      // Some or all collapsed → expand all
+      setCollapsedCategories(new Set());
+    }
+  };
+
+  const handleToggleFilterCategory = (cat: string) => {
+    setFilterCategories((prev) => {
+      if (prev === null) {
+        // Was showing all, now filter to just this one
+        return new Set([cat]);
+      }
+      const next = new Set(prev);
+      if (next.has(cat)) {
+        next.delete(cat);
+        if (next.size === 0) return null; // empty = show all
+      } else {
+        next.add(cat);
+      }
+      return next;
+    });
+  };
+
+  // Filter categoryGroups by filterCategories
+  const visibleCategoryGroups = useMemo(() => {
+    if (filterCategories === null) return categoryGroups;
+    return categoryGroups.filter((g) => !g.category || filterCategories.has(g.category));
+  }, [categoryGroups, filterCategories]);
+
   const markDirty = () => {
     if (!selectedId) return;
     saveStateRef.current = "dirty";
@@ -2044,30 +2081,87 @@ export function MainWindow({
                       })}`
                     : ""}
                 </span>
-                <button
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => {
-                    if (showCategoryInput && categoryInputValue.trim()) {
-                      void handleCreateCategory();
-                      return;
-                    }
-                    setShowCategoryInput(true);
-                  }}
-                  className="text-[10px] text-ink-ghost hover:text-bamboo transition-colors cursor-pointer"
-                  title={t("main.category.new", { defaultValue: "新建分类" })}
-                >
-                  <svg
-                    width="12"
-                    height="12"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2.5"
-                    strokeLinecap="round"
+                <div className="flex items-center gap-1">
+                  <button
+                    ref={filterPickerRef}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => setFilterPickerOpen((prev) => !prev)}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      setFilterCategories(null);
+                    }}
+                    className={`w-6 h-6 flex items-center justify-center rounded transition-all cursor-pointer ${
+                      filterCategories !== null
+                        ? "text-bamboo bg-bamboo-mist/60 shadow-[0_1px_3px_rgba(0,0,0,0.08)]"
+                        : "text-ink-ghost hover:text-bamboo"
+                    }`}
+                    title={t("main.category.filter", { defaultValue: "筛选分类" })}
                   >
-                    <path d="M12 5v14M5 12h14" />
-                  </svg>
-                </button>
+                    <svg
+                      width="11"
+                      height="11"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+                    </svg>
+                  </button>
+                  <button
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={handleToggleAllCollapse}
+                    className="group w-6 h-6 flex items-center justify-center rounded text-ink-ghost hover:text-bamboo transition-colors cursor-pointer"
+                    title={t("main.category.collapseAll", { defaultValue: "全部收起/展开" })}
+                  >
+                    <span
+                      className={`inline-flex transition-transform duration-200 ${
+                        categories.length > 0 && collapsedCategories.size === categories.length
+                          ? "-rotate-90 group-hover:rotate-0"
+                          : "rotate-0 group-hover:-rotate-90"
+                      }`}
+                    >
+                      <svg
+                        width="11"
+                        height="11"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <polyline points="6 9 12 15 18 9" />
+                      </svg>
+                    </span>
+                  </button>
+                  <button
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => {
+                      if (showCategoryInput && categoryInputValue.trim()) {
+                        void handleCreateCategory();
+                        return;
+                      }
+                      setShowCategoryInput(true);
+                    }}
+                    className="w-6 h-6 flex items-center justify-center rounded text-ink-ghost hover:text-bamboo transition-colors cursor-pointer"
+                    title={t("main.category.new", { defaultValue: "新建分类" })}
+                  >
+                    <svg
+                      width="12"
+                      height="12"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2.5"
+                      strokeLinecap="round"
+                    >
+                      <path d="M12 5v14M5 12h14" />
+                    </svg>
+                  </button>
+                </div>
               </div>
 
               {showCategoryInput && (
@@ -2178,7 +2272,7 @@ export function MainWindow({
                     </>
                   )}
 
-                  {categoryGroups.map((group: CategoryGroup) => {
+                  {visibleCategoryGroups.map((group: CategoryGroup) => {
                     if (!group.category) {
                       return (
                         <div
@@ -3215,6 +3309,68 @@ export function MainWindow({
               {cat}
             </button>
           ))}
+        </div>
+      )}
+
+      {filterPickerOpen && (
+        <div
+          className="popup-menu fixed z-[9999] min-w-[160px] py-1.5 bg-cloud/95 backdrop-blur-sm border border-paper-deep/50 rounded-lg overflow-hidden select-none animate-menu-enter"
+          style={{
+            left: filterPickerRef.current
+              ? Math.min(
+                  filterPickerRef.current.getBoundingClientRect().left,
+                  window.innerWidth - 168,
+                )
+              : 0,
+            top: filterPickerRef.current
+              ? filterPickerRef.current.getBoundingClientRect().bottom + 4
+              : 0,
+          }}
+          onMouseDown={(event) => event.stopPropagation()}
+        >
+          <div className="px-2 pb-1 border-b border-paper-deep/20 mb-1">
+            <button
+              onClick={() => {
+                setFilterCategories(null);
+                setFilterPickerOpen(false);
+              }}
+              className="w-full text-left px-2 py-1 text-[11px] font-body text-ink-soft hover:bg-bamboo-mist/60 hover:text-bamboo transition-colors cursor-pointer rounded"
+            >
+              {t("main.category.showAll", { defaultValue: "显示全部" })}
+            </button>
+          </div>
+          {categories.map((cat) => {
+            const checked = filterCategories === null || filterCategories.has(cat);
+            return (
+              <button
+                key={cat}
+                onClick={() => handleToggleFilterCategory(cat)}
+                className="w-full flex items-center gap-2 text-left px-3 py-1.5 text-[12px] font-body text-ink-soft hover:bg-bamboo-mist/60 hover:text-bamboo transition-colors cursor-pointer"
+              >
+                <svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className={`shrink-0 ${checked ? "text-bamboo" : "text-ink-ghost/30"}`}
+                >
+                  {checked ? (
+                    <>
+                      <rect x="3" y="3" width="18" height="18" rx="3" />
+                      <polyline points="8 12 11 15 16 9" />
+                    </>
+                  ) : (
+                    <rect x="3" y="3" width="18" height="18" rx="3" />
+                  )}
+                </svg>
+                <span className="truncate">{cat}</span>
+              </button>
+            );
+          })}
         </div>
       )}
 
