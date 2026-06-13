@@ -568,6 +568,7 @@ enum ShortcutAction {
 #[derive(Default)]
 struct NotepadPool {
     available: Mutex<Vec<String>>,
+    prewarming: AtomicBool,
 }
 
 impl NotepadPool {
@@ -1475,7 +1476,9 @@ fn activate_pooled_notepad(app: &AppHandle, bounds: Option<WindowBounds>) -> Opt
     let _ = window.set_focus();
     let _ = window.emit("notepad:activate", label.clone());
 
-    schedule_notepad_replenish(app, 100);
+    // 不再立即补充池子：避免 run_on_main_thread 嵌套 build()
+    // 造成 WebView2 消息泵死锁导致快捷键创建便签时卡死。
+    // 池子在启动时已预热两个备用窗口，用完后按需创建。
 
     Some(label)
 }
@@ -1564,12 +1567,18 @@ fn prewarm_notepad(app: &AppHandle) -> Result<(), AppError> {
         return Ok(());
     }
 
+    // Prevent concurrent WebView creation which can cause
+    // main-thread deadlock on Windows (WebView2 message pump re-entry)
+    if pool.prewarming.swap(true, Ordering::SeqCst) {
+        return Ok(());
+    }
+
     let label = notepad_window_label(None);
     let specs = notepad_window_specs();
     let visual_options = dynamic_window_visual_options(&label);
     let locale = configured_locale();
 
-    WebviewWindowBuilder::new(
+    let result = WebviewWindowBuilder::new(
         app,
         &label,
         WebviewUrl::App("index.html?view=notepad&standby=1".into()),
@@ -1585,8 +1594,11 @@ fn prewarm_notepad(app: &AppHandle) -> Result<(), AppError> {
     .skip_taskbar(true)
     .visible(false)
     .focused(false)
-    .build()?;
+    .build();
 
+    pool.prewarming.store(false, Ordering::SeqCst);
+
+    let window = result?;
     pool.put(label);
 
     Ok(())
@@ -1929,16 +1941,16 @@ fn setup_global_shortcut_plugin(app: &AppHandle) -> tauri::Result<()> {
                         }
                     }
                     ShortcutAction::OpenNotepad => {
-                        let bounds = if load_config().map(|c| c.open_at_cursor).unwrap_or(true) {
-                            let specs = saved_surface_specs(app);
-                            cursor_centered_bounds(&specs)
-                        } else {
-                            None
-                        };
+                        let app_clone = app_for_closure.clone();
                         if let Err(error) = app.run_on_main_thread(move || {
-                            if let Err(error) =
-                                open_notepad_window_now(&app_for_closure, None, bounds)
+                            let bounds = if load_config().map(|c| c.open_at_cursor).unwrap_or(true)
                             {
+                                let specs = saved_surface_specs(&app_clone);
+                                cursor_centered_bounds(&specs)
+                            } else {
+                                None
+                            };
+                            if let Err(error) = open_notepad_window_now(&app_clone, None, bounds) {
                                 eprintln!("failed to open notepad from global shortcut: {error}");
                             }
                         }) {

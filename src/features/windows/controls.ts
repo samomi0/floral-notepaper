@@ -83,8 +83,19 @@ export async function animateCurrentWindowBounds(
 
   await new Promise<void>((resolve, reject) => {
     const startedAt = globalThis.performance?.now() ?? Date.now();
+    let resolved = false;
+
+    // Fallback: use setTimeout to guarantee resolution even if rAF stalls
+    // (e.g. window hidden / minimized causes rAF to stop firing)
+    const fallback = setTimeout(() => {
+      if (!resolved) {
+        resolved = true;
+        void setCurrentWindowBounds(target).then(resolve).catch(reject);
+      }
+    }, durationMs + 100);
 
     const step = (timestamp: number) => {
+      if (resolved) return;
       const elapsed = timestamp - startedAt;
       const progress = Math.min(1, elapsed / durationMs);
       const eased = 1 - Math.pow(1 - progress, 3);
@@ -98,13 +109,22 @@ export async function animateCurrentWindowBounds(
 
       void setCurrentWindowBounds(next)
         .then(() => {
+          if (resolved) return;
           if (progress < 1) {
             raf(step);
           } else {
+            resolved = true;
+            clearTimeout(fallback);
             resolve();
           }
         })
-        .catch(reject);
+        .catch((err) => {
+          if (!resolved) {
+            resolved = true;
+            clearTimeout(fallback);
+            reject(err);
+          }
+        });
     };
 
     raf(step);
