@@ -77,7 +77,8 @@
       "new": "新增分類",
       "placeholder": "輸入分類名稱…",
       "rename": "重新命名",
-      "uncategorized": "未分類"
+      "uncategorized": "未分類",
+      "changeCategory": "切換分類"
     },
     "confirm": {
       "unsavedExternalFile": "「{{title}}」有未儲存的變更，是否儲存到原檔案？"

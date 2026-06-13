@@ -370,6 +370,8 @@ export function MainWindow({
   const [categoryMenuClosing, setCategoryMenuClosing] = useState(false);
   const [categoryMenuConfirmDelete, setCategoryMenuConfirmDelete] = useState(false);
   const [categoryMenuHoverSuppressed, setCategoryMenuHoverSuppressed] = useState(false);
+  const [categoryPickerOpen, setCategoryPickerOpen] = useState(false);
+  const categoryPickerRef = useRef<HTMLButtonElement>(null);
   const contentRef = useRef<HTMLTextAreaElement>(null);
   const windowLabelRef = useRef("main");
   const externalFileMtimeRef = useRef<number>(0);
@@ -1000,6 +1002,7 @@ export function MainWindow({
     function closeMenus() {
       setNoteMenuClosing(true);
       setCategoryMenuClosing(true);
+      setCategoryPickerOpen(false);
     }
 
     function handleKeyDown(event: KeyboardEvent) {
@@ -2707,6 +2710,51 @@ export function MainWindow({
                 className="w-full text-[20px] font-display font-bold text-ink placeholder:text-ink-ghost/50 tracking-wide disabled:opacity-60"
               />
               <div className="flex items-center gap-3 mt-1.5">
+                {selectedNote && (
+                  <>
+                    <button
+                      ref={categoryPickerRef}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setCategoryPickerOpen((prev) => !prev);
+                      }}
+                      className="flex items-center gap-1 h-[22px] px-1.5 rounded-md border border-paper-deep/50 bg-paper-warm/60 hover:border-bamboo/40 hover:bg-bamboo-mist/30 transition-colors cursor-pointer shrink-0"
+                      title={t("main.category.changeCategory", { defaultValue: "切换分类" })}
+                    >
+                      <svg
+                        width="10"
+                        height="10"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className="text-ink-ghost shrink-0"
+                      >
+                        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                      </svg>
+                      <span className="text-[10px] text-ink-ghost truncate max-w-[120px]">
+                        {selectedNote.category ||
+                          t("main.category.uncategorized", { defaultValue: "未分类" })}
+                      </span>
+                      <svg
+                        width="8"
+                        height="8"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="3"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className="text-ink-ghost/50 shrink-0"
+                      >
+                        <polyline points="6 9 12 15 18 9" />
+                      </svg>
+                    </button>
+                    <span className="text-[10px] text-ink-ghost/40">·</span>
+                  </>
+                )}
                 <span className="text-[10px] text-ink-ghost font-mono tabular-nums truncate max-w-[200px]">
                   {selectedExternalFile
                     ? t("main.externalFile.label", {
@@ -3047,6 +3095,46 @@ export function MainWindow({
               </button>
             </div>
           )}
+        </div>
+      )}
+
+      {categoryPickerOpen && selectedNote && (
+        <div
+          className="popup-menu fixed z-[9999] min-w-[140px] py-1.5 bg-cloud/95 backdrop-blur-sm border border-paper-deep/50 rounded-lg overflow-hidden select-none animate-menu-enter"
+          style={{
+            left: categoryPickerRef.current
+              ? Math.min(
+                  categoryPickerRef.current.getBoundingClientRect().left,
+                  window.innerWidth - 148,
+                )
+              : 0,
+            top: categoryPickerRef.current
+              ? categoryPickerRef.current.getBoundingClientRect().bottom + 4
+              : 0,
+          }}
+          onMouseDown={(event) => event.stopPropagation()}
+        >
+          <button
+            onClick={() => {
+              void handleMoveNote(selectedNote.id, "");
+              setCategoryPickerOpen(false);
+            }}
+            className="w-full text-left px-3 py-1.5 text-[12px] font-body text-ink-soft hover:bg-bamboo-mist/60 hover:text-bamboo transition-colors cursor-pointer"
+          >
+            {t("main.category.uncategorized", { defaultValue: "未分类" })}
+          </button>
+          {categories.map((cat) => (
+            <button
+              key={cat}
+              onClick={() => {
+                void handleMoveNote(selectedNote.id, cat);
+                setCategoryPickerOpen(false);
+              }}
+              className="w-full text-left px-3 py-1.5 text-[12px] font-body text-ink-soft hover:bg-bamboo-mist/60 hover:text-bamboo transition-colors cursor-pointer"
+            >
+              {cat}
+            </button>
+          ))}
         </div>
       )}
     </div>

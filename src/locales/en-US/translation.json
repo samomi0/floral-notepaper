@@ -77,7 +77,8 @@
       "new": "New Category",
       "placeholder": "Enter category name…",
       "rename": "Rename",
-      "uncategorized": "Uncategorized"
+      "uncategorized": "Uncategorized",
+      "changeCategory": "Change Category"
     },
     "confirm": {
       "unsavedExternalFile": "\"{{title}}\" has unsaved changes. Save to the original file?"
