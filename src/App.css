@@ -504,7 +504,7 @@ input::placeholder {
   opacity: 1;
 }
 .category-body > .category-body-inner {
-  overflow: hidden;
+  overflow-x: hidden;
 }
 
 /* Delete confirm inline pop */

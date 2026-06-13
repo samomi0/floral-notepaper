@@ -2356,7 +2356,7 @@ export function MainWindow({
 
                         <div className={`category-body ${isCollapsed ? "" : "expanded"}`}>
                           <div
-                            className="category-body-inner bg-bamboo/[0.03] border border-t-0 border-bamboo/10 rounded-b-lg pb-1 pt-1"
+                            className="category-body-inner bg-bamboo/[0.03] border border-t-0 border-bamboo/10 rounded-b-lg pb-1 pt-1 max-h-[320px] overflow-y-auto"
                             onDragOver={(e) => {
                               e.preventDefault();
                               e.dataTransfer.dropEffect = "move";
