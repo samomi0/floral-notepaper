@@ -3,6 +3,7 @@ import type { MouseEvent } from "react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { emit, listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { convertFileSrc } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { AboutPanel } from "./AboutPanel";
 import { exportMarkdownNote, importMarkdownNote } from "../features/importExport/api";
@@ -372,6 +373,7 @@ export function MainWindow({
   const [categoryMenuHoverSuppressed, setCategoryMenuHoverSuppressed] = useState(false);
   const [categoryPickerOpen, setCategoryPickerOpen] = useState(false);
   const categoryPickerRef = useRef<HTMLButtonElement>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
   const contentRef = useRef<HTMLTextAreaElement>(null);
   const windowLabelRef = useRef("main");
   const externalFileMtimeRef = useRef<number>(0);
@@ -537,6 +539,29 @@ export function MainWindow({
     [content],
   );
   const charCount = useMemo(() => countNoteChars(content), [content]);
+
+  const contentImages = useMemo(() => {
+    const regex = /!\[.*?\]\(([^)]+)\)/g;
+    const paths: string[] = [];
+    let match: RegExpExecArray | null;
+    while ((match = regex.exec(content)) !== null) {
+      if (!paths.includes(match[1])) {
+        paths.push(match[1]);
+      }
+    }
+    return paths;
+  }, [content]);
+
+  const resolveImagePath = useCallback(
+    (relativePath: string) => {
+      if (!imageBaseDir) return relativePath;
+      if (relativePath.startsWith("images/") || relativePath.startsWith("images\\")) {
+        return convertFileSrc(imageBaseDir + "/" + relativePath.replace(/\\/g, "/"));
+      }
+      return relativePath;
+    },
+    [imageBaseDir],
+  );
 
   const applyNote = useCallback(
     (note: Note) => {
@@ -2825,7 +2850,7 @@ export function MainWindow({
                         ))}
                       </div>
 
-                      <div className="flex-1 overflow-hidden px-5 pb-4">
+                      <div className="flex-1 flex flex-col overflow-hidden px-5 pb-4">
                         <textarea
                           ref={contentRef}
                           data-tab-indent="true"
@@ -2837,7 +2862,7 @@ export function MainWindow({
                           onPaste={imagePasteHandler}
                           onDrop={imageDropHandler}
                           onDragOver={imageDragOverHandler}
-                          className="w-full h-full leading-[1.9] text-ink-soft font-body placeholder:text-ink-ghost/40"
+                          className="w-full flex-1 leading-[1.9] text-ink-soft font-body placeholder:text-ink-ghost/40 resize-none"
                           style={{
                             fontSize: `${settingsConfig?.fontSize ?? 14}px`,
                             tabSize: `var(--tab-indent-size, 2)`,
@@ -2848,6 +2873,25 @@ export function MainWindow({
                           spellCheck={false}
                           disabled={!selectedId}
                         />
+                        {contentImages.length > 0 && (
+                          <div className="flex gap-2 mt-3 pb-1 overflow-x-auto">
+                            {contentImages.map((imgPath, i) => (
+                              <button
+                                key={i}
+                                onClick={() => setImagePreview(imgPath)}
+                                className="shrink-0 rounded-lg border border-paper-deep/40 overflow-hidden hover:border-bamboo/50 hover:shadow-md transition-all cursor-pointer bg-paper-warm/50"
+                                title={imgPath}
+                              >
+                                <img
+                                  src={resolveImagePath(imgPath) ?? imgPath}
+                                  alt={imgPath}
+                                  className="w-[128px] h-[128px] object-cover"
+                                  loading="lazy"
+                                />
+                              </button>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}
@@ -3135,6 +3179,46 @@ export function MainWindow({
               {cat}
             </button>
           ))}
+        </div>
+      )}
+
+      {imagePreview && (
+        <div
+          className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/80 backdrop-blur-sm"
+          onClick={() => setImagePreview(null)}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            setImagePreview(null);
+          }}
+        >
+          <button
+            onClick={() => setImagePreview(null)}
+            className="absolute top-4 right-4 w-9 h-9 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-white/80 hover:text-white transition-colors cursor-pointer z-10"
+            title={t("common.close", { defaultValue: "关闭" })}
+          >
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+            >
+              <path d="M18 6L6 18M6 6l12 12" />
+            </svg>
+          </button>
+          <img
+            src={resolveImagePath(imagePreview) ?? imagePreview}
+            alt={imagePreview}
+            className="max-w-[95vw] max-h-[95vh] object-contain rounded-lg shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setImagePreview(null);
+            }}
+          />
         </div>
       )}
     </div>
