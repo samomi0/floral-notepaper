@@ -1228,7 +1228,11 @@ export function MainWindow({
   const handleNewNote = async () => {
     await saveCurrentNote();
     try {
-      const note = await createNote({ title: "", content: "", category: activeCategory });
+      const note = await createNote({
+        title: new Date().toISOString().slice(0, 10),
+        content: "",
+        category: activeCategory,
+      });
       replaceNoteMetadata(note);
       applyNote(note);
     } catch (error) {
@@ -1608,7 +1612,11 @@ export function MainWindow({
   const ensureNoteSaved = useCallback(async (): Promise<string | null> => {
     if (selectedId) return selectedId;
     try {
-      const note = await createNote({ title, content, category: activeCategory });
+      const note = await createNote({
+        title: title || new Date().toISOString().slice(0, 10),
+        content,
+        category: activeCategory,
+      });
       replaceNoteMetadata(note);
       applyNote(note);
       return note.id;

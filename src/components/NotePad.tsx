@@ -112,11 +112,12 @@ export function NotePad({
   initialTileColor = DEFAULT_TILE_COLOR,
 }: NotePadProps) {
   const { t } = useTranslation();
+  const todayStr = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const [surfaceMode, setSurfaceMode] = useState<NoteSurfaceMode>(initialSurfaceMode);
   const [mode, setMode] = useState<OpenMode>("new");
   const [notes, setNotes] = useState<NoteMetadata[]>([]);
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
-  const [title, setTitle] = useState("");
+  const [title, setTitle] = useState(initialNoteId ? "" : todayStr);
   const [content, setContent] = useState("");
   const [status, setStatus] = useState<NotePadStatus>("empty");
   const [noteSurfaceAutoSave, setNoteSurfaceAutoSave] = useState(initialAutoSave);
@@ -282,7 +283,7 @@ export function NotePad({
       isStandby.current = false;
       hasEnteredOnce.current = true;
       setEditingNoteId(null);
-      setTitle("");
+      setTitle(todayStr);
       setContent("");
       setMode("new");
       setStatus("empty");
@@ -300,7 +301,8 @@ export function NotePad({
 
   const saveNote = useCallback(async () => {
     const existingCategory = notes.find((n) => n.id === editingNoteId)?.category ?? "";
-    const request = { title, content, category: existingCategory };
+    const resolvedTitle = title || new Date().toISOString().slice(0, 10);
+    const request = { title: resolvedTitle, content, category: existingCategory };
     const note = editingNoteId
       ? await updateNote(editingNoteId, request)
       : await createNote(request);
@@ -544,7 +546,7 @@ export function NotePad({
 
   const resetDraft = () => {
     setEditingNoteId(null);
-    setTitle("");
+    setTitle(todayStr);
     setContent("");
     setMode("new");
     setStatus("empty");
