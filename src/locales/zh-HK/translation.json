@@ -81,7 +81,11 @@
       "changeCategory": "切換分類",
       "filter": "篩選分類",
       "collapseAll": "全部收起/展開",
-      "showAll": "顯示全部"
+      "showAll": "顯示全部",
+      "selectAll": "全選",
+      "invert": "反選",
+      "filterTitle": "分類篩選",
+      "emptyFilter": "暫無分類"
     },
     "confirm": {
       "unsavedExternalFile": "「{{title}}」有未儲存的變更，是否儲存到原檔案？"

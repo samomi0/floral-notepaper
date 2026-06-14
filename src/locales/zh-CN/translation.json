@@ -81,7 +81,11 @@
       "changeCategory": "切换分类",
       "filter": "筛选分类",
       "collapseAll": "全部收起/展开",
-      "showAll": "显示全部"
+      "showAll": "显示全部",
+      "selectAll": "全选",
+      "invert": "反选",
+      "filterTitle": "分类筛选",
+      "emptyFilter": "暂无分类"
     },
     "confirm": {
       "unsavedExternalFile": "「{{title}}」有未保存的更改，是否保存到原文件？"

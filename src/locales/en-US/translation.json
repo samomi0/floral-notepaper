@@ -81,7 +81,11 @@
       "changeCategory": "Change Category",
       "filter": "Filter Categories",
       "collapseAll": "Collapse/Expand All",
-      "showAll": "Show All"
+      "showAll": "Show All",
+      "selectAll": "Select All",
+      "invert": "Invert",
+      "filterTitle": "Filter",
+      "emptyFilter": "No categories"
     },
     "confirm": {
       "unsavedExternalFile": "\"{{title}}\" has unsaved changes. Save to the original file?"

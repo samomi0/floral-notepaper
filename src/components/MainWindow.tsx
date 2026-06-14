@@ -366,7 +366,10 @@ export function MainWindow({
   const [settingsOverlay, setSettingsOverlay] = useState(() =>
     typeof window !== "undefined" ? window.innerWidth < 1080 : true,
   );
-  const [sidebarWidth, setSidebarWidth] = useState(280);
+  const [sidebarWidth, setSidebarWidth] = useState(() =>
+    Math.max(280, Math.floor((typeof window !== "undefined" ? window.innerWidth : 900) * 0.5)),
+  );
+  const [filterPanelOpen, setFilterPanelOpen] = useState(true);
   const [isResizingSidebar, setIsResizingSidebar] = useState(false);
   const [splitRatio, setSplitRatio] = useState(0.5);
   const [isResizingSplit, setIsResizingSplit] = useState(false);
@@ -1787,7 +1790,8 @@ export function MainWindow({
     document.body.style.cursor = "col-resize";
 
     const onMouseMove = (e: globalThis.MouseEvent) => {
-      const newWidth = Math.min(Math.max(e.clientX, 180), 500);
+      const maxWidth = Math.floor(window.innerWidth * 0.6);
+      const newWidth = Math.min(Math.max(e.clientX, 180), maxWidth);
       setSidebarWidth(newWidth);
     };
     const onMouseUp = () => setIsResizingSidebar(false);
@@ -2175,7 +2179,7 @@ export function MainWindow({
                   <button
                     ref={filterPickerRef}
                     onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => setFilterPickerOpen((prev) => !prev)}
+                    onClick={() => setFilterPanelOpen((prev) => !prev)}
                     onContextMenu={(e) => {
                       e.preventDefault();
                       setFilterCategories(null);
@@ -2275,7 +2279,89 @@ export function MainWindow({
                 </div>
               )}
 
-              <div className="flex-1 overflow-y-auto px-2 pb-2">
+              {filterPanelOpen && (
+                <div className="shrink-0 px-3 pb-2" style={{ height: "40%" }}>
+                  <div className="flex flex-col h-full rounded-lg border border-paper-deep/30 bg-paper-warm/40 p-2.5">
+                    <div className="flex items-center gap-1.5 pb-2 shrink-0 flex-wrap">
+                      <button
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => setFilterCategories(null)}
+                        className="shrink-0 px-2.5 py-1 rounded-full text-[10px] font-body bg-ink-ghost/10 text-ink-ghost hover:bg-ink-ghost/20 transition-colors cursor-pointer"
+                      >
+                        {t("main.category.showAll", { defaultValue: "全部" })}
+                      </button>
+                      <button
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => setFilterCategories(new Set(categories))}
+                        className="shrink-0 px-2.5 py-1 rounded-full text-[10px] font-body bg-ink-ghost/10 text-ink-ghost hover:bg-ink-ghost/20 transition-colors cursor-pointer"
+                      >
+                        {t("main.category.selectAll", { defaultValue: "全选" })}
+                      </button>
+                      <button
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() =>
+                          setFilterCategories((prev) => {
+                            const all = new Set(categories);
+                            const current = prev ?? all;
+                            const inverted = new Set<string>();
+                            for (const cat of categories) {
+                              if (!current.has(cat)) inverted.add(cat);
+                            }
+                            return inverted.size === 0 || inverted.size === categories.length
+                              ? null
+                              : inverted;
+                          })
+                        }
+                        className="shrink-0 px-2.5 py-1 rounded-full text-[10px] font-body bg-ink-ghost/10 text-ink-ghost hover:bg-ink-ghost/20 transition-colors cursor-pointer"
+                      >
+                        {t("main.category.invert", { defaultValue: "反选" })}
+                      </button>
+                    </div>
+                    <div className="flex-1 overflow-y-auto">
+                      {categories.length === 0 ? (
+                        <div className="text-[11px] text-ink-ghost/50 text-center py-4">
+                          {t("main.category.emptyFilter", { defaultValue: "暂无分类" })}
+                        </div>
+                      ) : (
+                        <div className="flex flex-wrap gap-1.5">
+                          {categories.map((cat) => {
+                            const checked = filterCategories === null || filterCategories.has(cat);
+                            return (
+                              <button
+                                key={cat}
+                                onMouseDown={(e) => e.preventDefault()}
+                                onClick={() => handleToggleFilterCategory(cat)}
+                                className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-body transition-colors cursor-pointer ${
+                                  checked
+                                    ? "bg-bamboo-mist/50 text-bamboo"
+                                    : "bg-paper-warm/80 text-ink-ghost hover:bg-paper-warm"
+                                }`}
+                              >
+                                <svg
+                                  width="10"
+                                  height="10"
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  className="shrink-0 opacity-60"
+                                >
+                                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                                </svg>
+                                <span className="truncate max-w-[100px]">{cat}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex-1 overflow-y-auto px-2 pb-2 border-t border-paper-deep/20">
                 <div className="space-y-0.5">
                   {externalFiles.length > 0 && (
                     <>
