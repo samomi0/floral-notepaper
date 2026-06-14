@@ -96,6 +96,8 @@ pub struct SaveNoteRequest {
     pub content: String,
     #[serde(default)]
     pub category: String,
+    #[serde(default)]
+    pub tags: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -106,6 +108,8 @@ pub struct NoteMetadata {
     pub file_name: String,
     #[serde(default)]
     pub category: String,
+    #[serde(default)]
+    pub tags: Vec<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub word_count: usize,
@@ -120,6 +124,8 @@ pub struct Note {
     pub file_name: String,
     #[serde(default)]
     pub category: String,
+    #[serde(default)]
+    pub tags: Vec<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub word_count: usize,
@@ -199,6 +205,20 @@ impl From<tauri::Error> for AppError {
     fn from(error: tauri::Error) -> Self {
         Self::new("tauri", error.to_string())
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct Tag {
+    pub id: String,
+    pub name: String,
+    pub color: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct TagsFile {
+    tags: Vec<Tag>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -608,6 +628,10 @@ impl NoteStore {
         self.data_dir.join("metadata.json")
     }
 
+    pub fn tags_path(&self) -> PathBuf {
+        self.data_dir.join("tags.json")
+    }
+
     pub fn config_path(&self) -> PathBuf {
         self.config_dir.join("config.json")
     }
@@ -676,6 +700,7 @@ impl NoteStore {
             title: metadata.title,
             file_name: metadata.file_name,
             category: metadata.category,
+            tags: metadata.tags.clone(),
             created_at: metadata.created_at,
             updated_at: metadata.updated_at,
             word_count: metadata.word_count,
@@ -690,6 +715,7 @@ impl NoteStore {
         let file_name = self.file_name_for(&id, &request.title);
         let word_count = count_words(&request.content);
         let category = request.category.clone();
+        let tags = request.tags.clone();
         let note_path = self.note_path_in_category(&file_name, &category);
         if let Some(parent) = note_path.parent() {
             fs::create_dir_all(parent)?;
@@ -699,6 +725,7 @@ impl NoteStore {
             title: request.title,
             file_name: file_name.clone(),
             category: category.clone(),
+            tags: tags.clone(),
             created_at: now,
             updated_at: now,
             word_count,
@@ -715,6 +742,7 @@ impl NoteStore {
             title: metadata.title,
             file_name,
             category,
+            tags,
             created_at: now,
             updated_at: now,
             word_count,
@@ -755,6 +783,7 @@ impl NoteStore {
         note.title = request.title;
         note.file_name = new_file_name.clone();
         note.category = new_category.clone();
+        note.tags = request.tags.clone();
         note.updated_at = now;
         note.word_count = word_count;
         note.preview = preview(&request.content);
@@ -764,6 +793,7 @@ impl NoteStore {
             title: note.title.clone(),
             file_name: note.file_name.clone(),
             category: new_category,
+            tags: note.tags.clone(),
             created_at: note.created_at,
             updated_at: note.updated_at,
             word_count: note.word_count,
@@ -878,6 +908,7 @@ impl NoteStore {
             title,
             content,
             category: category.to_string(),
+            tags: vec![],
         })
     }
 
@@ -1002,6 +1033,74 @@ impl NoteStore {
             if changed {
                 self.save_metadata(&metadata_file)?;
             }
+        }
+        Ok(())
+    }
+
+    fn load_tags(&self) -> Result<TagsFile, AppError> {
+        let path = self.tags_path();
+        if !path.exists() {
+            return Ok(TagsFile::default());
+        }
+        Ok(serde_json::from_str(&fs::read_to_string(&path)?)?)
+    }
+
+    fn save_tags(&self, tags_file: &TagsFile) -> Result<(), AppError> {
+        let path = self.tags_path();
+        write_json_atomic(&path, tags_file)
+            .map_err(|e| AppError::new("tags_save", format!("保存标签失败: {e}")))?;
+        Ok(())
+    }
+
+    pub fn list_tags(&self) -> Result<Vec<Tag>, AppError> {
+        Ok(self.load_tags()?.tags)
+    }
+
+    pub fn create_tag(&self, name: String, color: String) -> Result<Tag, AppError> {
+        let mut tags_file = self.load_tags()?;
+        if tags_file.tags.iter().any(|t| t.name == name) {
+            return Err(AppError::new("tagExists", format!("标签「{name}」已存在")));
+        }
+        let tag = Tag {
+            id: Uuid::new_v4().to_string(),
+            name,
+            color,
+        };
+        tags_file.tags.push(tag.clone());
+        self.save_tags(&tags_file)?;
+        Ok(tag)
+    }
+
+    pub fn update_tag(&self, id: &str, name: String, color: String) -> Result<Tag, AppError> {
+        let mut tags_file = self.load_tags()?;
+        let tag = tags_file
+            .tags
+            .iter_mut()
+            .find(|t| t.id == id)
+            .ok_or_else(|| AppError::new("tagNotFound", format!("标签未找到: {id}")))?;
+        tag.name = name;
+        tag.color = color;
+        let result = tag.clone();
+        self.save_tags(&tags_file)?;
+        Ok(result)
+    }
+
+    pub fn delete_tag(&self, id: &str) -> Result<(), AppError> {
+        let mut tags_file = self.load_tags()?;
+        tags_file.tags.retain(|t| t.id != id);
+        self.save_tags(&tags_file)?;
+
+        // Remove tag from all notes
+        let mut metadata_file = self.load_metadata()?;
+        let mut changed = false;
+        for note in &mut metadata_file.notes {
+            if note.tags.contains(&id.to_string()) {
+                note.tags.retain(|t| t != id);
+                changed = true;
+            }
+        }
+        if changed {
+            self.save_metadata(&metadata_file)?;
         }
         Ok(())
     }
@@ -1334,6 +1433,7 @@ impl NoteStore {
                 title,
                 file_name,
                 category: category.to_string(),
+                tags: vec![],
                 created_at: modified,
                 updated_at: modified,
                 word_count: count_words(&content),

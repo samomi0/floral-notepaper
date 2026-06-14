@@ -87,6 +87,13 @@
       "filterTitle": "分類篩選",
       "emptyFilter": "暫無分類"
     },
+    "tag": {
+      "new": "新增標籤",
+      "changeTag": "切換標籤",
+      "noTag": "標籤",
+      "placeholder": "輸入標籤名…",
+      "empty": "暫無標籤"
+    },
     "confirm": {
       "unsavedExternalFile": "「{{title}}」有未儲存的變更，是否儲存到原檔案？"
     },

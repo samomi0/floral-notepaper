@@ -1,6 +1,6 @@
 import { t, type TFunction } from "i18next";
 import { invoke } from "@tauri-apps/api/core";
-import type { Note, NoteMetadata, SaveNoteRequest } from "./types";
+import type { Note, NoteMetadata, SaveNoteRequest, Tag } from "./types";
 
 interface SerializedAppError {
   code?: unknown;
@@ -61,6 +61,22 @@ export function renameCategory(oldName: string, newName: string): Promise<void> 
 
 export function deleteCategory(name: string): Promise<void> {
   return invoke("categories_delete", { name });
+}
+
+export function listTags(): Promise<Tag[]> {
+  return invoke("tags_list");
+}
+
+export function createTag(name: string, color: string): Promise<Tag> {
+  return invoke("tags_create", { name, color });
+}
+
+export function updateTag(id: string, name: string, color: string): Promise<Tag> {
+  return invoke("tags_update", { id, name, color });
+}
+
+export function deleteTag(id: string): Promise<void> {
+  return invoke("tags_delete", { id });
 }
 
 export function readExternalFile(path: string): Promise<string> {

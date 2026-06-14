@@ -87,6 +87,13 @@
       "filterTitle": "Filter",
       "emptyFilter": "No categories"
     },
+    "tag": {
+      "new": "New Tag",
+      "changeTag": "Change Tag",
+      "noTag": "Tags",
+      "placeholder": "Enter tag name…",
+      "empty": "No tags"
+    },
     "confirm": {
       "unsavedExternalFile": "\"{{title}}\" has unsaved changes. Save to the original file?"
     },

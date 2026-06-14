@@ -1598,7 +1598,7 @@ fn prewarm_notepad(app: &AppHandle) -> Result<(), AppError> {
 
     pool.prewarming.store(false, Ordering::SeqCst);
 
-    let window = result?;
+    let _window = result?;
     pool.put(label);
 
     Ok(())

@@ -37,6 +37,7 @@ import { SettingsPanel } from "./SettingsPanel";
 import {
   createNote,
   createCategory,
+  createTag,
   deleteCategory,
   deleteNote,
   getErrorMessage,
@@ -44,16 +45,19 @@ import {
   getNote,
   listCategories,
   listNotes,
+  listTags,
   moveNoteCategory,
   readExternalFile,
   renameCategory,
   saveExternalFile,
   updateNote,
+  updateTag,
+  deleteTag,
 } from "../features/notes/api";
+import type { ExternalFile, Note, NoteMetadata, Tag } from "../features/notes/types";
 import { cleanUnusedImages, saveImageFromPath } from "../features/images/api";
 import { useImagePaste, insertTextAtCursor } from "../features/images/useImagePaste";
 import { useImageBaseDir } from "../features/images/useImageBaseDir";
-import type { ExternalFile, Note, NoteMetadata } from "../features/notes/types";
 import {
   countNoteChars,
   filterNotes,
@@ -354,11 +358,18 @@ export function MainWindow({
   const [categories, setCategories] = useState<string[]>([]);
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
   const [filterCategories, setFilterCategories] = useState<Set<string> | null>(null);
+  const [filterTags, setFilterTags] = useState<Set<string> | null>(null);
   const [filterPickerOpen, setFilterPickerOpen] = useState(false);
   const filterPickerRef = useRef<HTMLButtonElement>(null);
+  const [tags, setTags] = useState<Tag[]>([]);
+  const [currentNoteTags, setCurrentNoteTags] = useState<string[]>([]);
+  const [tagPickerOpen, setTagPickerOpen] = useState(false);
+  const tagPickerRef = useRef<HTMLButtonElement>(null);
   const [activeCategory, setActiveCategory] = useState<string>("");
   const [showCategoryInput, setShowCategoryInput] = useState(false);
   const [categoryInputValue, setCategoryInputValue] = useState("");
+  const [showTagInput, setShowTagInput] = useState(false);
+  const [tagInputValue, setTagInputValue] = useState("");
   const [noteMenuMode, setNoteMenuMode] = useState<"main" | "move">("main");
   const [renamingCategory, setRenamingCategory] = useState<string | null>(null);
   const [renameCategoryValue, setRenameCategoryValue] = useState("");
@@ -404,6 +415,8 @@ export function MainWindow({
   notesRef.current = notes;
   const externalFilesRef = useRef(externalFiles);
   externalFilesRef.current = externalFiles;
+  const currentNoteTagsRef = useRef(currentNoteTags);
+  currentNoteTagsRef.current = currentNoteTags;
   // 每次"应用/切换当前笔记"都会自增；异步加载完成后若 epoch 已变化，说明用户
   // 已切换到别处，该次结果直接丢弃，避免旧的加载结果覆盖新选中的笔记
   const loadEpoch = useLoadEpoch();
@@ -416,6 +429,10 @@ export function MainWindow({
   );
   const selectedNoteRef = useRef(selectedNote);
   selectedNoteRef.current = selectedNote;
+
+  useEffect(() => {
+    setCurrentNoteTags(selectedNote?.tags ?? []);
+  }, [selectedNote]);
 
   const selectedExternalFile = useMemo(
     () => externalFiles.find((f) => f.id === selectedId) ?? null,
@@ -730,10 +747,11 @@ export function MainWindow({
     async function bootstrap() {
       setIsLoading(true);
       try {
-        const [loadedConfig, loadedNotes, loadedCategories] = await Promise.all([
+        const [loadedConfig, loadedNotes, loadedCategories, loadedTags] = await Promise.all([
           getConfig(),
           listNotes(),
           listCategories(),
+          listTags(),
         ]);
         if (cancelled) return;
         setSettingsConfig(loadedConfig);
@@ -741,6 +759,7 @@ export function MainWindow({
         setViewMode(normalizeViewMode(loadedConfig.defaultViewMode));
         setNotes(loadedNotes);
         setCategories(loadedCategories);
+        setTags(loadedTags);
         setCollapsedCategories(new Set(loadedCategories));
         if (loadedNotes[0]) {
           const note = await getNote(loadedNotes[0].id);
@@ -1080,6 +1099,7 @@ export function MainWindow({
       setCategoryMenuClosing(true);
       setCategoryPickerOpen(false);
       setFilterPickerOpen(false);
+      setTagPickerOpen(false);
     }
 
     function handleKeyDown(event: KeyboardEvent) {
@@ -1143,6 +1163,7 @@ export function MainWindow({
       // 保存完成后也只在"仍停留在这篇笔记"时才更新保存状态
       const titleSnapshot = titleValueRef.current;
       const contentSnapshot = contentValueRef.current;
+      const tagsSnapshot = currentNoteTagsRef.current;
       const stillCurrent = () => selectedIdRef.current === id;
       const settleSaveState = (state: SaveState) => {
         if (!stillCurrent()) return;
@@ -1168,6 +1189,7 @@ export function MainWindow({
             title: titleSnapshot,
             content: contentSnapshot,
             category,
+            tags: tagsSnapshot,
           });
           replaceNoteMetadata(note);
           const contentChanged =
@@ -1278,6 +1300,7 @@ export function MainWindow({
         title: new Date().toISOString().slice(0, 10),
         content: "",
         category: activeCategory,
+        tags: [],
       });
       replaceNoteMetadata(note);
       applyNote(note);
@@ -1500,7 +1523,7 @@ export function MainWindow({
     event.preventDefault();
     event.stopPropagation();
 
-    const menuWidth = 168;
+    const menuWidth = 138;
     const menuHeight = 76;
     const x = Math.min(event.clientX, window.innerWidth - menuWidth - 4);
     const y = Math.min(event.clientY, window.innerHeight - menuHeight - 4);
@@ -1643,11 +1666,64 @@ export function MainWindow({
     });
   };
 
-  // Filter categoryGroups by filterCategories
+  // Filter categoryGroups by filterCategories and filterTags
   const visibleCategoryGroups = useMemo(() => {
-    if (filterCategories === null) return categoryGroups;
-    return categoryGroups.filter((g) => !g.category || filterCategories.has(g.category));
-  }, [categoryGroups, filterCategories]);
+    let result = categoryGroups;
+    if (filterCategories !== null) {
+      result = result.filter((g) => !g.category || filterCategories.has(g.category));
+    }
+    if (filterTags !== null) {
+      result = result
+        .map((g) => ({
+          ...g,
+          notes: g.notes.filter((n) => n.tags?.some((tagId) => filterTags.has(tagId))),
+        }))
+        .filter((g) => g.notes.length > 0 || !g.category);
+    }
+    return result;
+  }, [categoryGroups, filterCategories, filterTags]);
+
+  const handleToggleFilterTag = (tagId: string) => {
+    setFilterTags((prev) => {
+      if (prev === null) return new Set([tagId]);
+      const next = new Set(prev);
+      if (next.has(tagId)) {
+        next.delete(tagId);
+        if (next.size === 0) return null;
+      } else {
+        next.add(tagId);
+      }
+      return next;
+    });
+  };
+
+  const handleToggleNoteTag = (tagId: string) => {
+    setCurrentNoteTags((prev) => {
+      if (prev.includes(tagId)) {
+        return prev.filter((id) => id !== tagId);
+      }
+      return [...prev, tagId];
+    });
+    markDirty();
+  };
+
+  const handleCreateTag = async () => {
+    const name = tagInputValue.trim();
+    if (!name) {
+      setShowTagInput(false);
+      return;
+    }
+    try {
+      const h = Math.floor(Math.random() * 360);
+      const color = `hsl(${h},60%,65%)`;
+      const tag = await createTag(name, color);
+      setTags((prev) => [...prev, tag]);
+      setShowTagInput(false);
+      setTagInputValue("");
+    } catch (error) {
+      showToast(getErrorMessage(error));
+    }
+  };
 
   const markDirty = () => {
     if (!selectedId) return;
@@ -1662,6 +1738,7 @@ export function MainWindow({
         title: title || new Date().toISOString().slice(0, 10),
         content,
         category: activeCategory,
+        tags: [],
       });
       replaceNoteMetadata(note);
       applyNote(note);
@@ -2183,9 +2260,10 @@ export function MainWindow({
                     onContextMenu={(e) => {
                       e.preventDefault();
                       setFilterCategories(null);
+                      setFilterTags(null);
                     }}
                     className={`w-6 h-6 flex items-center justify-center rounded transition-all cursor-pointer ${
-                      filterCategories !== null
+                      filterCategories !== null || filterTags !== null
                         ? "text-bamboo bg-bamboo-mist/60 shadow-[0_1px_3px_rgba(0,0,0,0.08)]"
                         : "text-ink-ghost hover:text-bamboo"
                     }`}
@@ -2255,8 +2333,57 @@ export function MainWindow({
                       <path d="M12 5v14M5 12h14" />
                     </svg>
                   </button>
+                  <button
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => {
+                      if (showTagInput && tagInputValue.trim()) {
+                        void handleCreateTag();
+                        return;
+                      }
+                      setShowTagInput(true);
+                    }}
+                    className="w-6 h-6 flex items-center justify-center rounded text-ink-ghost hover:text-bamboo transition-colors cursor-pointer"
+                    title={t("main.tag.new", { defaultValue: "新增标签" })}
+                  >
+                    <svg
+                      width="12"
+                      height="12"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
+                      <line x1="7" y1="7" x2="7.01" y2="7" />
+                      <line x1="12" y1="9" x2="12" y2="15" />
+                      <line x1="9" y1="12" x2="15" y2="12" />
+                    </svg>
+                  </button>
                 </div>
               </div>
+
+              {showTagInput && (
+                <div className="px-3 pb-2 shrink-0">
+                  <input
+                    type="text"
+                    autoFocus
+                    value={tagInputValue}
+                    onChange={(e) => setTagInputValue(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") void handleCreateTag();
+                      if (e.key === "Escape") {
+                        setShowTagInput(false);
+                        setTagInputValue("");
+                      }
+                    }}
+                    onBlur={() => void handleCreateTag()}
+                    placeholder={t("main.tag.placeholder", { defaultValue: "输入标签名…" })}
+                    className="w-full px-2.5 h-7 rounded-lg text-[12px] font-body text-ink bg-paper-warm/80 border border-paper-deep/40 focus:border-bamboo/30 placeholder:text-ink-ghost/60"
+                  />
+                </div>
+              )}
 
               {showCategoryInput && (
                 <div className="px-3 pb-2 shrink-0">
@@ -2280,83 +2407,143 @@ export function MainWindow({
               )}
 
               {filterPanelOpen && (
-                <div className="shrink-0 px-3 pb-2" style={{ height: "40%" }}>
-                  <div className="flex flex-col h-full rounded-lg border border-paper-deep/30 bg-paper-warm/40 p-2.5">
-                    <div className="flex items-center gap-1.5 pb-2 shrink-0 flex-wrap">
-                      <button
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={() => setFilterCategories(null)}
-                        className="shrink-0 px-2.5 py-1 rounded-full text-[10px] font-body bg-ink-ghost/10 text-ink-ghost hover:bg-ink-ghost/20 transition-colors cursor-pointer"
-                      >
-                        {t("main.category.showAll", { defaultValue: "全部" })}
-                      </button>
-                      <button
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={() => setFilterCategories(new Set(categories))}
-                        className="shrink-0 px-2.5 py-1 rounded-full text-[10px] font-body bg-ink-ghost/10 text-ink-ghost hover:bg-ink-ghost/20 transition-colors cursor-pointer"
-                      >
-                        {t("main.category.selectAll", { defaultValue: "全选" })}
-                      </button>
-                      <button
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={() =>
-                          setFilterCategories((prev) => {
-                            const all = new Set(categories);
-                            const current = prev ?? all;
-                            const inverted = new Set<string>();
-                            for (const cat of categories) {
-                              if (!current.has(cat)) inverted.add(cat);
-                            }
-                            return inverted.size === 0 || inverted.size === categories.length
-                              ? null
-                              : inverted;
-                          })
-                        }
-                        className="shrink-0 px-2.5 py-1 rounded-full text-[10px] font-body bg-ink-ghost/10 text-ink-ghost hover:bg-ink-ghost/20 transition-colors cursor-pointer"
-                      >
-                        {t("main.category.invert", { defaultValue: "反选" })}
-                      </button>
+                <div className="px-3 pb-2" style={{ maxHeight: "40%" }}>
+                  <div className="flex flex-col rounded-lg border border-paper-deep/30 bg-paper-warm/40 p-2.5 overflow-y-auto">
+                    {/* 分类筛选 */}
+                    <div className="rounded-md border border-paper-deep/20 bg-paper-warm/60 p-2 mb-2">
+                      <div className="flex items-center gap-1.5 pb-2 shrink-0 flex-wrap">
+                        <button
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => setFilterCategories(null)}
+                          className="shrink-0 px-2.5 py-1 rounded-full text-[10px] font-body bg-ink-ghost/10 text-ink-ghost hover:bg-ink-ghost/20 transition-colors cursor-pointer"
+                        >
+                          {t("main.category.showAll", { defaultValue: "全部" })}
+                        </button>
+                        <button
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => setFilterCategories(new Set(categories))}
+                          className="shrink-0 px-2.5 py-1 rounded-full text-[10px] font-body bg-ink-ghost/10 text-ink-ghost hover:bg-ink-ghost/20 transition-colors cursor-pointer"
+                        >
+                          {t("main.category.selectAll", { defaultValue: "全选" })}
+                        </button>
+                        <button
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() =>
+                            setFilterCategories((prev) => {
+                              const all = new Set(categories);
+                              const current = prev ?? all;
+                              const inverted = new Set<string>();
+                              for (const cat of categories) {
+                                if (!current.has(cat)) inverted.add(cat);
+                              }
+                              return inverted.size === 0 || inverted.size === categories.length
+                                ? null
+                                : inverted;
+                            })
+                          }
+                          className="shrink-0 px-2.5 py-1 rounded-full text-[10px] font-body bg-ink-ghost/10 text-ink-ghost hover:bg-ink-ghost/20 transition-colors cursor-pointer"
+                        >
+                          {t("main.category.invert", { defaultValue: "反选" })}
+                        </button>
+                      </div>
+                      <div className="flex-1 overflow-y-auto">
+                        {categories.length === 0 ? (
+                          <div className="text-[11px] text-ink-ghost/50 text-center py-4">
+                            {t("main.category.emptyFilter", { defaultValue: "暂无分类" })}
+                          </div>
+                        ) : (
+                          <div className="flex flex-wrap gap-1.5">
+                            {categories.map((cat) => {
+                              const checked =
+                                filterCategories === null || filterCategories.has(cat);
+                              return (
+                                <button
+                                  key={cat}
+                                  onMouseDown={(e) => e.preventDefault()}
+                                  onClick={() => handleToggleFilterCategory(cat)}
+                                  className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-body transition-colors cursor-pointer ${
+                                    checked
+                                      ? "bg-bamboo-mist/50 text-bamboo"
+                                      : "bg-paper-warm/80 text-ink-ghost hover:bg-paper-warm"
+                                  }`}
+                                >
+                                  <svg
+                                    width="10"
+                                    height="10"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    className="shrink-0 opacity-60"
+                                  >
+                                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                                  </svg>
+                                  <span className="truncate max-w-[100px]">{cat}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex-1 overflow-y-auto">
-                      {categories.length === 0 ? (
-                        <div className="text-[11px] text-ink-ghost/50 text-center py-4">
-                          {t("main.category.emptyFilter", { defaultValue: "暂无分类" })}
+                    {tags.length > 0 && (
+                      <div className="rounded-md border border-paper-deep/20 bg-paper-warm/60 p-2">
+                        <div className="flex items-center gap-1.5 pb-1.5 flex-wrap">
+                          <button
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => setFilterTags(null)}
+                            className="shrink-0 px-2 py-0.5 rounded-full text-[9px] font-body bg-ink-ghost/10 text-ink-ghost hover:bg-ink-ghost/20 transition-colors cursor-pointer"
+                          >
+                            {t("main.category.showAll", { defaultValue: "全部" })}
+                          </button>
+                          <button
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => setFilterTags(new Set(tags.map((t) => t.id)))}
+                            className="shrink-0 px-2 py-0.5 rounded-full text-[9px] font-body bg-ink-ghost/10 text-ink-ghost hover:bg-ink-ghost/20 transition-colors cursor-pointer"
+                          >
+                            {t("main.category.selectAll", { defaultValue: "全选" })}
+                          </button>
                         </div>
-                      ) : (
-                        <div className="flex flex-wrap gap-1.5">
-                          {categories.map((cat) => {
-                            const checked = filterCategories === null || filterCategories.has(cat);
+                        <div className="flex flex-wrap gap-1">
+                          {tags.map((tag) => {
+                            const checked = filterTags === null || filterTags.has(tag.id);
                             return (
                               <button
-                                key={cat}
+                                key={tag.id}
                                 onMouseDown={(e) => e.preventDefault()}
-                                onClick={() => handleToggleFilterCategory(cat)}
-                                className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-body transition-colors cursor-pointer ${
-                                  checked
-                                    ? "bg-bamboo-mist/50 text-bamboo"
-                                    : "bg-paper-warm/80 text-ink-ghost hover:bg-paper-warm"
+                                onClick={() => handleToggleFilterTag(tag.id)}
+                                className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-body transition-colors cursor-pointer ${
+                                  checked ? "ring-1 ring-offset-0" : "opacity-60 hover:opacity-100"
                                 }`}
+                                style={{
+                                  backgroundColor: `${tag.color}20`,
+                                  color: tag.color,
+                                  ...(checked ? { ringColor: tag.color } : {}),
+                                }}
                               >
                                 <svg
-                                  width="10"
-                                  height="10"
+                                  width="8"
+                                  height="8"
                                   viewBox="0 0 24 24"
                                   fill="none"
                                   stroke="currentColor"
                                   strokeWidth="2"
                                   strokeLinecap="round"
                                   strokeLinejoin="round"
-                                  className="shrink-0 opacity-60"
+                                  className="shrink-0"
                                 >
-                                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                                  <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
+                                  <line x1="7" y1="7" x2="7.01" y2="7" />
                                 </svg>
-                                <span className="truncate max-w-[100px]">{cat}</span>
+                                <span className="truncate max-w-[80px]">{tag.name}</span>
                               </button>
                             );
                           })}
                         </div>
-                      )}
-                    </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -2528,6 +2715,30 @@ export function MainWindow({
                                       defaultValue: "{{count}} 字",
                                     })}
                                   </span>
+                                  {note.tags && note.tags.length > 0 && (
+                                    <>
+                                      <span className="text-[10px] text-ink-ghost/40">·</span>
+                                      <span className="flex items-center gap-1">
+                                        {note.tags.slice(0, 2).map((tagId) => {
+                                          const tag = tags.find((t) => t.id === tagId);
+                                          if (!tag) return null;
+                                          return (
+                                            <span
+                                              key={tag.id}
+                                              className="w-2 h-2 rounded-full shrink-0"
+                                              style={{ backgroundColor: tag.color }}
+                                              title={tag.name}
+                                            />
+                                          );
+                                        })}
+                                        {note.tags.length > 2 && (
+                                          <span className="text-[9px] text-ink-ghost/40">
+                                            +{note.tags.length - 2}
+                                          </span>
+                                        )}
+                                      </span>
+                                    </>
+                                  )}
                                 </div>
                               </div>
                             );
@@ -2709,6 +2920,30 @@ export function MainWindow({
                                           defaultValue: "{{count}} 字",
                                         })}
                                       </span>
+                                      {note.tags && note.tags.length > 0 && (
+                                        <>
+                                          <span className="text-[10px] text-ink-ghost/40">·</span>
+                                          <span className="flex items-center gap-1">
+                                            {note.tags.slice(0, 2).map((tagId) => {
+                                              const tag = tags.find((t) => t.id === tagId);
+                                              if (!tag) return null;
+                                              return (
+                                                <span
+                                                  key={tag.id}
+                                                  className="w-2 h-2 rounded-full shrink-0"
+                                                  style={{ backgroundColor: tag.color }}
+                                                  title={tag.name}
+                                                />
+                                              );
+                                            })}
+                                            {note.tags.length > 2 && (
+                                              <span className="text-[9px] text-ink-ghost/40">
+                                                +{note.tags.length - 2}
+                                              </span>
+                                            )}
+                                          </span>
+                                        </>
+                                      )}
                                     </div>
                                   </div>
                                 );
@@ -3049,7 +3284,48 @@ export function MainWindow({
                         <polyline points="6 9 12 15 18 9" />
                       </svg>
                     </button>
-                    <span className="text-[10px] text-ink-ghost/40">·</span>
+                    <button
+                      ref={tagPickerRef}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setTagPickerOpen((prev) => !prev);
+                      }}
+                      className="flex items-center gap-1 h-[22px] px-1.5 rounded-md border border-paper-deep/50 bg-paper-warm/60 hover:border-bamboo/40 hover:bg-bamboo-mist/30 transition-colors cursor-pointer shrink-0"
+                      title={t("main.tag.changeTag", { defaultValue: "切换标签" })}
+                    >
+                      <svg
+                        width="10"
+                        height="10"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className="text-ink-ghost shrink-0"
+                      >
+                        <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
+                        <line x1="7" y1="7" x2="7.01" y2="7" />
+                      </svg>
+                      <span className="text-[10px] text-ink-ghost truncate max-w-[80px]">
+                        {currentNoteTags.length > 0
+                          ? `${currentNoteTags.length} 个标签`
+                          : t("main.tag.noTag", { defaultValue: "标签" })}
+                      </span>
+                      <svg
+                        width="8"
+                        height="8"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="3"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className="text-ink-ghost/50 shrink-0"
+                      >
+                        <polyline points="6 9 12 15 18 9" />
+                      </svg>
+                    </button>
                   </>
                 )}
                 <span className="text-[10px] text-ink-ghost font-mono tabular-nums truncate max-w-[200px]">
@@ -3098,6 +3374,40 @@ export function MainWindow({
                       className="flex flex-col min-h-0 shrink-0"
                       style={{ width: viewMode === "split" ? `${splitRatio * 100}%` : "100%" }}
                     >
+                      {currentNoteTags.length > 0 && (
+                        <div className="flex items-center gap-1.5 px-4 pt-1 pb-1 flex-wrap">
+                          {currentNoteTags.map((tagId) => {
+                            const tag = tags.find((t) => t.id === tagId);
+                            if (!tag) return null;
+                            return (
+                              <span
+                                key={tag.id}
+                                className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-body"
+                                style={{
+                                  backgroundColor: `${tag.color}20`,
+                                  color: tag.color,
+                                }}
+                              >
+                                <svg
+                                  width="9"
+                                  height="9"
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  className="shrink-0 opacity-70"
+                                >
+                                  <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
+                                  <line x1="7" y1="7" x2="7.01" y2="7" />
+                                </svg>
+                                <span>{tag.name}</span>
+                              </span>
+                            );
+                          })}
+                        </div>
+                      )}
                       <div className="flex items-center gap-0.5 px-4 pt-2 pb-1 shrink-0">
                         {toolbarButtons.map((button) => (
                           <button
@@ -3385,7 +3695,7 @@ export function MainWindow({
       </div>
       {noteMenu && noteMenuTarget && (
         <div
-          className={`popup-menu fixed z-[9999] min-w-[168px] py-1.5 bg-cloud/95 backdrop-blur-sm border border-paper-deep/50 rounded-lg overflow-hidden select-none ${noteMenuClosing ? "animate-menu-exit" : "animate-menu-enter"}`}
+          className={`popup-menu fixed z-[9999] min-w-[130px] py-1.5 bg-cloud/95 backdrop-blur-sm border border-paper-deep/50 rounded-lg overflow-hidden select-none ${noteMenuClosing ? "animate-menu-exit" : "animate-menu-enter"}`}
           style={{ left: noteMenu.x, top: noteMenu.y }}
           onMouseDown={(event) => event.stopPropagation()}
         >
@@ -3504,12 +3814,12 @@ export function MainWindow({
 
       {categoryPickerOpen && selectedNote && (
         <div
-          className="popup-menu fixed z-[9999] min-w-[140px] py-1.5 bg-cloud/95 backdrop-blur-sm border border-paper-deep/50 rounded-lg overflow-hidden select-none animate-menu-enter"
+          className="popup-menu fixed z-[9999] min-w-[90px] py-1.5 bg-cloud/95 backdrop-blur-sm border border-paper-deep/50 rounded-lg overflow-hidden select-none animate-menu-enter"
           style={{
             left: categoryPickerRef.current
               ? Math.min(
                   categoryPickerRef.current.getBoundingClientRect().left,
-                  window.innerWidth - 148,
+                  window.innerWidth - 98,
                 )
               : 0,
             top: categoryPickerRef.current
@@ -3539,6 +3849,63 @@ export function MainWindow({
               {cat}
             </button>
           ))}
+        </div>
+      )}
+
+      {tagPickerOpen && selectedNote && (
+        <div
+          className="popup-menu fixed z-[9999] min-w-[140px] py-1.5 bg-cloud/95 backdrop-blur-sm border border-paper-deep/50 rounded-lg overflow-hidden select-none animate-menu-enter"
+          style={{
+            left: tagPickerRef.current
+              ? Math.min(tagPickerRef.current.getBoundingClientRect().left, window.innerWidth - 148)
+              : 0,
+            top: tagPickerRef.current ? tagPickerRef.current.getBoundingClientRect().bottom + 4 : 0,
+          }}
+          onMouseDown={(event) => event.stopPropagation()}
+        >
+          {tags.map((tag) => {
+            const checked = currentNoteTags.includes(tag.id);
+            return (
+              <button
+                key={tag.id}
+                onClick={() => handleToggleNoteTag(tag.id)}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-[12px] font-body hover:bg-bamboo-mist/60 transition-colors cursor-pointer"
+              >
+                <svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className={`shrink-0 ${checked ? "text-bamboo" : "text-ink-ghost/30"}`}
+                >
+                  {checked ? (
+                    <>
+                      <rect x="3" y="3" width="18" height="18" rx="3" />
+                      <polyline points="8 12 11 15 16 9" />
+                    </>
+                  ) : (
+                    <rect x="3" y="3" width="18" height="18" rx="3" />
+                  )}
+                </svg>
+                <span
+                  className="w-2.5 h-2.5 rounded-full shrink-0"
+                  style={{ backgroundColor: tag.color }}
+                />
+                <span className={`truncate ${checked ? "text-bamboo" : "text-ink-soft"}`}>
+                  {tag.name}
+                </span>
+              </button>
+            );
+          })}
+          {tags.length === 0 && (
+            <div className="px-3 py-2 text-[11px] text-ink-ghost/50 text-center">
+              {t("main.tag.empty", { defaultValue: "暂无标签" })}
+            </div>
+          )}
         </div>
       )}
 

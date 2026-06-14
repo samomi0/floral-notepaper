@@ -5,7 +5,9 @@ pub mod services;
 pub mod updater;
 
 use locales::Locale;
-use services::notes::{default_store, AppConfig, AppError, Note, NoteMetadata, SaveNoteRequest};
+use services::notes::{
+    default_store, AppConfig, AppError, Note, NoteMetadata, SaveNoteRequest, Tag,
+};
 use std::{env, fs, io::Write, path::PathBuf};
 use tauri::{AppHandle, Emitter, Manager};
 
@@ -167,6 +169,28 @@ fn notes_move_category(
     let result = default_store()?.move_note_to_category(&id, &category)?;
     let _ = app.emit("notes-changed", ());
     Ok(result)
+}
+
+#[tauri::command]
+fn tags_list() -> Result<Vec<Tag>, AppError> {
+    default_store()?.list_tags()
+}
+
+#[tauri::command]
+fn tags_create(name: String, color: String) -> Result<Tag, AppError> {
+    default_store()?.create_tag(name, color)
+}
+
+#[tauri::command]
+fn tags_update(id: String, name: String, color: String) -> Result<Tag, AppError> {
+    default_store()?.update_tag(&id, name, color)
+}
+
+#[tauri::command]
+fn tags_delete(app: AppHandle, id: String) -> Result<(), AppError> {
+    default_store()?.delete_tag(&id)?;
+    let _ = app.emit("notes-changed", ());
+    Ok(())
 }
 
 #[tauri::command]
@@ -466,6 +490,10 @@ pub fn run() {
             categories_create,
             categories_rename,
             categories_delete,
+            tags_list,
+            tags_create,
+            tags_update,
+            tags_delete,
             images_save,
             images_save_from_path,
             images_get_base_dir,

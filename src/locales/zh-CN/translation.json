@@ -87,6 +87,13 @@
       "filterTitle": "分类筛选",
       "emptyFilter": "暂无分类"
     },
+    "tag": {
+      "new": "新增标签",
+      "changeTag": "切换标签",
+      "noTag": "标签",
+      "placeholder": "输入标签名…",
+      "empty": "暂无标签"
+    },
     "confirm": {
       "unsavedExternalFile": "「{{title}}」有未保存的更改，是否保存到原文件？"
     },

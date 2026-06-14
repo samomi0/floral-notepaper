@@ -32,6 +32,7 @@ export function metadataFromNote(note: Note): NoteMetadata {
     title: note.title,
     fileName: note.fileName,
     category: note.category,
+    tags: note.tags ?? [],
     createdAt: note.createdAt,
     updatedAt: note.updatedAt,
     wordCount: note.wordCount,
