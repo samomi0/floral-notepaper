@@ -92,7 +92,10 @@
       "changeTag": "Change Tag",
       "noTag": "Tags",
       "placeholder": "Enter tag name…",
-      "empty": "No tags"
+      "empty": "No tags",
+      "color": "Tag color",
+      "namePlaceholder": "Tag name",
+      "confirmDelete": "Delete this tag?"
     },
     "confirm": {
       "unsavedExternalFile": "\"{{title}}\" has unsaved changes. Save to the original file?"

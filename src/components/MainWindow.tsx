@@ -365,6 +365,18 @@ export function MainWindow({
   const [currentNoteTags, setCurrentNoteTags] = useState<string[]>([]);
   const [tagPickerOpen, setTagPickerOpen] = useState(false);
   const tagPickerRef = useRef<HTMLButtonElement>(null);
+  const [tagContextMenu, setTagContextMenu] = useState<{
+    x: number;
+    y: number;
+    tagId: string;
+  } | null>(null);
+  const [editingTag, setEditingTag] = useState<string | null>(null);
+  const [editTagName, setEditTagName] = useState("");
+  const [editTagColor, setEditTagColor] = useState("");
+  const [tagDeleteConfirm, setTagDeleteConfirm] = useState(false);
+  const [tagColorPreview, setTagColorPreview] = useState(
+    () => `hsl(${Math.floor(Math.random() * 360)},60%,65%)`,
+  );
   const [activeCategory, setActiveCategory] = useState<string>("");
   const [showCategoryInput, setShowCategoryInput] = useState(false);
   const [categoryInputValue, setCategoryInputValue] = useState("");
@@ -1100,6 +1112,7 @@ export function MainWindow({
       setCategoryPickerOpen(false);
       setFilterPickerOpen(false);
       setTagPickerOpen(false);
+      setTagContextMenu(null);
     }
 
     function handleKeyDown(event: KeyboardEvent) {
@@ -1714,12 +1727,41 @@ export function MainWindow({
       return;
     }
     try {
-      const h = Math.floor(Math.random() * 360);
-      const color = `hsl(${h},60%,65%)`;
-      const tag = await createTag(name, color);
+      const tag = await createTag(name, tagColorPreview);
       setTags((prev) => [...prev, tag]);
       setShowTagInput(false);
       setTagInputValue("");
+      setTagColorPreview(`hsl(${Math.floor(Math.random() * 360)},60%,65%)`);
+    } catch (error) {
+      showToast(getErrorMessage(error));
+    }
+  };
+
+  const handleEditTag = async () => {
+    if (!editingTag || !editTagName.trim()) return;
+    try {
+      const updated = await updateTag(editingTag, editTagName.trim(), editTagColor);
+      setTags((prev) => prev.map((t) => (t.id === editingTag ? updated : t)));
+      setEditingTag(null);
+    } catch (error) {
+      showToast(getErrorMessage(error));
+    }
+  };
+
+  const handleDeleteTag = async () => {
+    if (!editingTag) return;
+    try {
+      await deleteTag(editingTag);
+      setTags((prev) => prev.filter((t) => t.id !== editingTag));
+      setFilterTags((prev) => {
+        if (prev === null) return null;
+        const next = new Set(prev);
+        next.delete(editingTag);
+        return next.size === 0 ? null : next;
+      });
+      setCurrentNoteTags((prev) => prev.filter((id) => id !== editingTag));
+      setEditingTag(null);
+      setTagDeleteConfirm(false);
     } catch (error) {
       showToast(getErrorMessage(error));
     }
@@ -2366,22 +2408,31 @@ export function MainWindow({
 
               {showTagInput && (
                 <div className="px-3 pb-2 shrink-0">
-                  <input
-                    type="text"
-                    autoFocus
-                    value={tagInputValue}
-                    onChange={(e) => setTagInputValue(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") void handleCreateTag();
-                      if (e.key === "Escape") {
-                        setShowTagInput(false);
-                        setTagInputValue("");
-                      }
-                    }}
-                    onBlur={() => void handleCreateTag()}
-                    placeholder={t("main.tag.placeholder", { defaultValue: "输入标签名…" })}
-                    className="w-full px-2.5 h-7 rounded-lg text-[12px] font-body text-ink bg-paper-warm/80 border border-paper-deep/40 focus:border-bamboo/30 placeholder:text-ink-ghost/60"
-                  />
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      autoFocus
+                      value={tagInputValue}
+                      onChange={(e) => setTagInputValue(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") void handleCreateTag();
+                        if (e.key === "Escape") {
+                          setShowTagInput(false);
+                          setTagInputValue("");
+                        }
+                      }}
+                      onBlur={() => void handleCreateTag()}
+                      placeholder={t("main.tag.placeholder", { defaultValue: "输入标签名…" })}
+                      className="flex-1 px-2.5 h-7 rounded-lg text-[12px] font-body text-ink bg-paper-warm/80 border border-paper-deep/40 focus:border-bamboo/30 placeholder:text-ink-ghost/60"
+                    />
+                    <input
+                      type="color"
+                      value={tagColorPreview}
+                      onChange={(e) => setTagColorPreview(e.target.value)}
+                      className="w-7 h-7 rounded cursor-pointer border-0 p-0"
+                      title={t("main.tag.color", { defaultValue: "标签颜色" })}
+                    />
+                  </div>
                 </div>
               )}
 
@@ -2514,6 +2565,10 @@ export function MainWindow({
                                 key={tag.id}
                                 onMouseDown={(e) => e.preventDefault()}
                                 onClick={() => handleToggleFilterTag(tag.id)}
+                                onContextMenu={(e) => {
+                                  e.preventDefault();
+                                  setTagContextMenu({ x: e.clientX, y: e.clientY, tagId: tag.id });
+                                }}
                                 className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-body transition-colors cursor-pointer ${
                                   checked ? "ring-1 ring-offset-0" : "opacity-60 hover:opacity-100"
                                 }`}
@@ -3904,6 +3959,122 @@ export function MainWindow({
           {tags.length === 0 && (
             <div className="px-3 py-2 text-[11px] text-ink-ghost/50 text-center">
               {t("main.tag.empty", { defaultValue: "暂无标签" })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {tagContextMenu && (
+        <div
+          className="popup-menu fixed z-[9999] min-w-[130px] py-1.5 bg-cloud/95 backdrop-blur-sm border border-paper-deep/50 rounded-lg overflow-hidden select-none animate-menu-enter"
+          style={{ left: tagContextMenu.x, top: tagContextMenu.y }}
+          onMouseDown={(event) => event.stopPropagation()}
+        >
+          {editingTag === tagContextMenu.tagId ? (
+            tagDeleteConfirm ? (
+              <div className="animate-menu-slide-left">
+                <div className="px-3 py-1.5 text-[11px] font-body text-ink-faint border-b border-paper-deep/20">
+                  {t("main.tag.confirmDelete", { defaultValue: "确认删除此标签？" })}
+                </div>
+                <button
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => void handleDeleteTag()}
+                  className="w-full text-left px-3 py-1.5 text-[12px] font-body text-red-400 hover:bg-danger-bg hover:text-red-500 transition-colors cursor-pointer"
+                >
+                  {t("main.category.confirmDeleteAction", { defaultValue: "确认删除" })}
+                </button>
+                <button
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => {
+                    setTagDeleteConfirm(false);
+                    setEditingTag(null);
+                    setTagContextMenu(null);
+                  }}
+                  className="w-full text-left px-3 py-1.5 text-[12px] font-body text-ink-soft hover:bg-bamboo-mist/60 hover:text-bamboo transition-colors cursor-pointer"
+                >
+                  {t("common.cancel", { defaultValue: "取消" })}
+                </button>
+              </div>
+            ) : (
+              <div className="animate-menu-slide-right p-2">
+                <input
+                  type="text"
+                  autoFocus
+                  value={editTagName}
+                  onChange={(e) => setEditTagName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") void handleEditTag();
+                    if (e.key === "Escape") {
+                      setEditingTag(null);
+                      setTagContextMenu(null);
+                    }
+                  }}
+                  placeholder={t("main.tag.namePlaceholder", { defaultValue: "标签名称" })}
+                  className="w-full px-2 py-1 rounded text-[12px] font-body text-ink bg-paper-warm/80 border border-paper-deep/40 mb-2"
+                />
+                <div className="flex items-center gap-2 mb-2">
+                  <input
+                    type="color"
+                    value={editTagColor}
+                    onChange={(e) => setEditTagColor(e.target.value)}
+                    className="w-6 h-6 rounded cursor-pointer border-0 p-0"
+                  />
+                  <span className="text-[10px] text-ink-ghost">
+                    {t("main.tag.color", { defaultValue: "标签颜色" })}
+                  </span>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => void handleEditTag()}
+                    className="flex-1 px-2 py-1 rounded text-[11px] font-body text-bamboo bg-bamboo-mist/40 hover:bg-bamboo-mist/60 transition-colors cursor-pointer"
+                  >
+                    {t("common.save", { defaultValue: "保存" })}
+                  </button>
+                  <button
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => {
+                      setEditingTag(null);
+                      setTagContextMenu(null);
+                    }}
+                    className="flex-1 px-2 py-1 rounded text-[11px] font-body text-ink-ghost hover:bg-paper-warm transition-colors cursor-pointer"
+                  >
+                    {t("common.cancel", { defaultValue: "取消" })}
+                  </button>
+                </div>
+              </div>
+            )
+          ) : (
+            <div className="animate-menu-slide-right">
+              <button
+                onClick={() => {
+                  const tag = tags.find((t) => t.id === tagContextMenu.tagId);
+                  if (tag) {
+                    setEditingTag(tag.id);
+                    setEditTagName(tag.name);
+                    setEditTagColor(tag.color);
+                    setTagDeleteConfirm(false);
+                  }
+                }}
+                className="w-full text-left px-3 py-1.5 text-[12px] font-body text-ink-soft hover:bg-bamboo-mist/60 hover:text-bamboo transition-colors cursor-pointer"
+              >
+                {t("main.category.rename", { defaultValue: "编辑" })}
+              </button>
+              <button
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  const tag = tags.find((t) => t.id === tagContextMenu.tagId);
+                  if (tag) {
+                    setEditingTag(tag.id);
+                    setEditTagName(tag.name);
+                    setEditTagColor(tag.color);
+                    setTagDeleteConfirm(true);
+                  }
+                }}
+                className="w-full text-left px-3 py-1.5 text-[12px] font-body text-red-400 hover:bg-danger-bg hover:text-red-500 transition-colors cursor-pointer border-t border-paper-deep/20"
+              >
+                {t("main.category.delete", { defaultValue: "删除" })}
+              </button>
             </div>
           )}
         </div>

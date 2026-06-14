@@ -92,7 +92,10 @@
       "changeTag": "切换标签",
       "noTag": "标签",
       "placeholder": "输入标签名…",
-      "empty": "暂无标签"
+      "empty": "暂无标签",
+      "color": "标签颜色",
+      "namePlaceholder": "标签名称",
+      "confirmDelete": "确认删除此标签？"
     },
     "confirm": {
       "unsavedExternalFile": "「{{title}}」有未保存的更改，是否保存到原文件？"

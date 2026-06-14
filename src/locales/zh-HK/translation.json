@@ -92,7 +92,10 @@
       "changeTag": "切換標籤",
       "noTag": "標籤",
       "placeholder": "輸入標籤名…",
-      "empty": "暫無標籤"
+      "empty": "暫無標籤",
+      "color": "標籤顏色",
+      "namePlaceholder": "標籤名稱",
+      "confirmDelete": "確認刪除此標籤？"
     },
     "confirm": {
       "unsavedExternalFile": "「{{title}}」有未儲存的變更，是否儲存到原檔案？"
