@@ -4,6 +4,7 @@ import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { emit, listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { AboutPanel } from "./AboutPanel";
 import { exportMarkdownNote, importMarkdownNote } from "../features/importExport/api";
@@ -556,6 +557,48 @@ export function MainWindow({
     }
     return paths;
   }, [content]);
+
+  const contentLinks = useMemo(() => {
+    const regex = /\[([^\]]*)\]\((https?:\/\/[^)\s]+)\)/g;
+    const links: Array<{ text: string; url: string }> = [];
+    const seen = new Set<string>();
+    let match: RegExpExecArray | null;
+    while ((match = regex.exec(content)) !== null) {
+      const url = match[2];
+      if (!seen.has(url)) {
+        seen.add(url);
+        links.push({ text: match[1] || url, url });
+      }
+    }
+    // Also catch bare URLs (not inside markdown link syntax)
+    const bareRegex = /(?<!\]\()https?:\/\/[^\s)}\]>]+/g;
+    while ((match = bareRegex.exec(content)) !== null) {
+      const url = match[0];
+      if (!seen.has(url)) {
+        seen.add(url);
+        try {
+          const host = new URL(url).hostname;
+          links.push({ text: host, url });
+        } catch {
+          links.push({ text: url, url });
+        }
+      }
+    }
+    return links;
+  }, [content]);
+
+  const linkColors = useMemo(() => {
+    const colors: Record<string, { bg: string; text: string }> = {};
+    const hues = [200, 160, 280, 30, 340, 120, 50, 190, 260, 10];
+    contentLinks.forEach((link, i) => {
+      const h = hues[i % hues.length];
+      colors[link.url] = {
+        bg: `hsla(${h},55%,92%,0.9)`,
+        text: `hsl(${h},40%,30%)`,
+      };
+    });
+    return colors;
+  }, [contentLinks]);
 
   const resolveImagePath = useCallback(
     (relativePath: string) => {
@@ -1639,6 +1682,45 @@ export function MainWindow({
     onError: showToast,
     t,
   });
+
+  const handleUrlPaste = useCallback(
+    (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+      const text = e.clipboardData.getData("text/plain");
+      if (!text) return;
+
+      const trimmed = text.trim();
+      try {
+        new URL(trimmed);
+      } catch {
+        return; // Not a URL, let default paste handle it
+      }
+
+      e.preventDefault();
+
+      const textarea = contentRef.current;
+      if (!textarea) return;
+
+      const host = new URL(trimmed).hostname;
+      const markdown = `[${host}](${trimmed})`;
+      insertTextAtCursor(textarea, setContent, markdown);
+      markDirty();
+    },
+    [setContent, markDirty],
+  );
+
+  const handlePaste = useCallback(
+    (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+      const hasImages = Array.from(e.clipboardData.items).some((item) =>
+        item.type.startsWith("image/"),
+      );
+      if (hasImages) {
+        imagePasteHandler(e);
+        return;
+      }
+      handleUrlPaste(e);
+    },
+    [imagePasteHandler, handleUrlPaste],
+  );
 
   const handleCleanUnusedImages = async () => {
     if (!selectedId || isExternal) return;
@@ -2963,7 +3045,7 @@ export function MainWindow({
                             setContent(event.target.value);
                             markDirty();
                           }}
-                          onPaste={imagePasteHandler}
+                          onPaste={handlePaste}
                           onDrop={imageDropHandler}
                           onDragOver={imageDragOverHandler}
                           className="w-full flex-1 leading-[1.9] text-ink-soft font-body placeholder:text-ink-ghost/40 resize-none"
@@ -2977,6 +3059,60 @@ export function MainWindow({
                           spellCheck={false}
                           disabled={!selectedId}
                         />
+                        {contentLinks.length > 0 && (
+                          <div className="flex gap-1.5 mt-2 flex-wrap">
+                            {contentLinks.map((link, i) => {
+                              const color = linkColors[link.url];
+                              return (
+                                <button
+                                  key={i}
+                                  onClick={() => void openUrl(link.url)}
+                                  onContextMenu={(e) => {
+                                    e.preventDefault();
+                                    navigator.clipboard.writeText(link.url).then(
+                                      () =>
+                                        showToast(
+                                          t("main.editor.linkCopied", {
+                                            defaultValue: "链接已复制",
+                                          }),
+                                          "success",
+                                        ),
+                                      () =>
+                                        showToast(
+                                          t("main.editor.linkCopyFailed", {
+                                            defaultValue: "复制失败",
+                                          }),
+                                          "error",
+                                        ),
+                                    );
+                                  }}
+                                  className="shrink-0 flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-body cursor-pointer hover:shadow-sm transition-all"
+                                  style={{
+                                    backgroundColor: color.bg,
+                                    color: color.text,
+                                  }}
+                                  title={link.url}
+                                >
+                                  <svg
+                                    width="10"
+                                    height="10"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2.5"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    className="shrink-0 opacity-70"
+                                  >
+                                    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                                    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                                  </svg>
+                                  <span className="truncate max-w-[160px]">{link.text}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
                         {contentImages.length > 0 && (
                           <div className="flex gap-2 mt-3 pb-1 overflow-x-auto">
                             {contentImages.map((imgPath, i) => (

@@ -98,7 +98,9 @@
       "redoLabel": "Redo",
       "cycleViewMode": "Switch Mode",
       "imageCopied": "Image copied to clipboard",
-      "imageCopyFailed": "Failed to copy image"
+      "imageCopyFailed": "Failed to copy image",
+      "linkCopied": "Link copied",
+      "linkCopyFailed": "Copy failed"
     },
     "externalFile": {
       "label": "External File · {{path}}"

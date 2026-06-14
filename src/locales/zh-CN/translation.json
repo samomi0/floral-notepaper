@@ -98,7 +98,9 @@
       "redoLabel": "重做",
       "cycleViewMode": "模式切换",
       "imageCopied": "图像已复制到剪贴板",
-      "imageCopyFailed": "复制图像失败"
+      "imageCopyFailed": "复制图像失败",
+      "linkCopied": "链接已复制",
+      "linkCopyFailed": "复制失败"
     },
     "externalFile": {
       "label": "外部文件 · {{path}}"
