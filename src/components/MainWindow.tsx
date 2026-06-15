@@ -2855,89 +2855,94 @@ export function MainWindow({
                             if (noteId) void handleMoveNote(noteId, "");
                           }}
                         >
-                          {group.notes.map((note) => {
-                            const isSelected = note.id === selectedId;
-                            const isHovered = note.id === hoveredId;
-                            return (
-                              <div
-                                key={note.id}
-                                draggable
-                                onDragStart={(e) => {
-                                  e.dataTransfer.setData("text/plain", note.id);
-                                  e.dataTransfer.effectAllowed = "move";
-                                }}
-                                onClick={() => void handleSelectNote(note.id)}
-                                onContextMenu={(event) => handleOpenNoteMenu(event, note.id)}
-                                onMouseEnter={() => setHoveredId(note.id)}
-                                onMouseLeave={() => setHoveredId(null)}
-                                className={`w-full text-left rounded-xl px-3 py-2.5 transition-all duration-[600ms] cursor-pointer group relative ${
-                                  isSelected
-                                    ? "bg-bamboo-mist/70"
-                                    : isHovered
-                                      ? "bg-paper-warm/70"
-                                      : "bg-transparent"
-                                }`}
-                              >
+                          <div
+                            className="grid gap-2 p-1"
+                            style={{ gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))" }}
+                          >
+                            {group.notes.map((note) => {
+                              const isSelected = note.id === selectedId;
+                              const isHovered = note.id === hoveredId;
+                              return (
                                 <div
-                                  className={`absolute left-0 top-1/2 -translate-y-1/2 w-[3px] rounded-r-full bg-bamboo/60 transition-all duration-[600ms] ${
-                                    isSelected ? "h-5 opacity-100" : "h-0 opacity-0"
+                                  key={note.id}
+                                  draggable
+                                  onDragStart={(e) => {
+                                    e.dataTransfer.setData("text/plain", note.id);
+                                    e.dataTransfer.effectAllowed = "move";
+                                  }}
+                                  onClick={() => void handleSelectNote(note.id)}
+                                  onContextMenu={(event) => handleOpenNoteMenu(event, note.id)}
+                                  onMouseEnter={() => setHoveredId(note.id)}
+                                  onMouseLeave={() => setHoveredId(null)}
+                                  className={`text-left rounded-xl px-3 py-2.5 transition-all duration-100 cursor-pointer group relative border border-paper-deep/20 hover:border-bamboo/15 hover:shadow-sm ${
+                                    isSelected
+                                      ? "bg-bamboo-mist/70"
+                                      : isHovered
+                                        ? "bg-paper-warm/70"
+                                        : "bg-transparent"
                                   }`}
-                                />
-                                <div className="flex items-baseline justify-between mb-0.5">
-                                  <span
-                                    className={`text-[13px] font-display font-medium truncate pr-2 transition-colors ${
-                                      isSelected ? "text-bamboo" : "text-ink-soft"
+                                >
+                                  <div
+                                    className={`absolute left-0 top-1/2 -translate-y-1/2 w-[3px] rounded-r-full bg-bamboo/60 transition-all duration-[600ms] ${
+                                      isSelected ? "h-5 opacity-100" : "h-0 opacity-0"
                                     }`}
-                                  >
-                                    {getDisplayTitle(note, t)}
-                                  </span>
-                                  <span className="text-[10px] text-ink-ghost font-mono tabular-nums shrink-0">
-                                    {formatShortDate(note.updatedAt)}
-                                  </span>
+                                  />
+                                  <div className="flex items-baseline justify-between mb-0.5">
+                                    <span
+                                      className={`text-[13px] font-display font-medium truncate pr-2 transition-colors ${
+                                        isSelected ? "text-bamboo" : "text-ink-soft"
+                                      }`}
+                                    >
+                                      {getDisplayTitle(note, t)}
+                                    </span>
+                                    <span className="text-[10px] text-ink-ghost font-mono tabular-nums shrink-0">
+                                      {formatShortDate(note.updatedAt)}
+                                    </span>
+                                  </div>
+                                  <p className="text-[11px] text-ink-ghost leading-relaxed line-clamp-2 group-hover:text-ink-faint transition-colors">
+                                    {note.preview ||
+                                      t("common.blankNote", { defaultValue: "空白笔记" })}
+                                  </p>
+                                  <div className="flex items-center gap-2 mt-1">
+                                    <span className="text-[10px] text-ink-ghost/60 font-mono tabular-nums">
+                                      {formatTime(note.updatedAt)}
+                                    </span>
+                                    <span className="text-[10px] text-ink-ghost/40">·</span>
+                                    <span className="text-[10px] text-ink-ghost/60 font-mono tabular-nums">
+                                      {t("common.wordCount", {
+                                        count: note.wordCount,
+                                        defaultValue: "{{count}} 字",
+                                      })}
+                                    </span>
+                                    {note.tags && note.tags.length > 0 && (
+                                      <>
+                                        <span className="text-[10px] text-ink-ghost/40">·</span>
+                                        <span className="flex items-center gap-1">
+                                          {note.tags.slice(0, 2).map((tagId) => {
+                                            const tag = tags.find((t) => t.id === tagId);
+                                            if (!tag) return null;
+                                            return (
+                                              <span
+                                                key={tag.id}
+                                                className="w-2 h-2 rounded-full shrink-0"
+                                                style={{ backgroundColor: tag.color }}
+                                                title={tag.name}
+                                              />
+                                            );
+                                          })}
+                                          {note.tags.length > 2 && (
+                                            <span className="text-[9px] text-ink-ghost/40">
+                                              +{note.tags.length - 2}
+                                            </span>
+                                          )}
+                                        </span>
+                                      </>
+                                    )}
+                                  </div>
                                 </div>
-                                <p className="text-[11px] text-ink-ghost leading-relaxed line-clamp-2 group-hover:text-ink-faint transition-colors">
-                                  {note.preview ||
-                                    t("common.blankNote", { defaultValue: "空白笔记" })}
-                                </p>
-                                <div className="flex items-center gap-2 mt-1">
-                                  <span className="text-[10px] text-ink-ghost/60 font-mono tabular-nums">
-                                    {formatTime(note.updatedAt)}
-                                  </span>
-                                  <span className="text-[10px] text-ink-ghost/40">·</span>
-                                  <span className="text-[10px] text-ink-ghost/60 font-mono tabular-nums">
-                                    {t("common.wordCount", {
-                                      count: note.wordCount,
-                                      defaultValue: "{{count}} 字",
-                                    })}
-                                  </span>
-                                  {note.tags && note.tags.length > 0 && (
-                                    <>
-                                      <span className="text-[10px] text-ink-ghost/40">·</span>
-                                      <span className="flex items-center gap-1">
-                                        {note.tags.slice(0, 2).map((tagId) => {
-                                          const tag = tags.find((t) => t.id === tagId);
-                                          if (!tag) return null;
-                                          return (
-                                            <span
-                                              key={tag.id}
-                                              className="w-2 h-2 rounded-full shrink-0"
-                                              style={{ backgroundColor: tag.color }}
-                                              title={tag.name}
-                                            />
-                                          );
-                                        })}
-                                        {note.tags.length > 2 && (
-                                          <span className="text-[9px] text-ink-ghost/40">
-                                            +{note.tags.length - 2}
-                                          </span>
-                                        )}
-                                      </span>
-                                    </>
-                                  )}
-                                </div>
-                              </div>
-                            );
-                          })}
+                              );
+                            })}
+                          </div>
                         </div>
                       );
                     }
@@ -3055,94 +3060,100 @@ export function MainWindow({
                                 {t("main.category.emptyFolder", { defaultValue: "空文件夹" })}
                               </div>
                             ) : (
-                              group.notes.map((note) => {
-                                const isSelected = note.id === selectedId;
-                                const isHovered = note.id === hoveredId;
+                              <div
+                                className="grid gap-2 p-1"
+                                style={{
+                                  gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))",
+                                }}
+                              >
+                                {group.notes.map((note) => {
+                                  const isSelected = note.id === selectedId;
+                                  const isHovered = note.id === hoveredId;
 
-                                return (
-                                  <div
-                                    key={note.id}
-                                    draggable
-                                    onDragStart={(e) => {
-                                      e.dataTransfer.setData("text/plain", note.id);
-                                      e.dataTransfer.effectAllowed = "move";
-                                    }}
-                                    onClick={() => void handleSelectNote(note.id)}
-                                    onContextMenu={(event) => handleOpenNoteMenu(event, note.id)}
-                                    onMouseEnter={() => setHoveredId(note.id)}
-                                    onMouseLeave={() => setHoveredId(null)}
-                                    className={`w-full text-left rounded-lg mx-1 px-2.5 py-2 transition-all duration-[600ms] cursor-pointer group relative ${
-                                      isSelected
-                                        ? "bg-bamboo-mist/70"
-                                        : isHovered
-                                          ? "bg-paper-warm/70"
-                                          : "bg-transparent"
-                                    }`}
-                                    style={{ width: "calc(100% - 8px)" }}
-                                  >
+                                  return (
                                     <div
-                                      className={`absolute left-0 top-1/2 -translate-y-1/2 w-[3px] rounded-r-full bg-bamboo/60 transition-all duration-[600ms] ${
-                                        isSelected ? "h-5 opacity-100" : "h-0 opacity-0"
+                                      key={note.id}
+                                      draggable
+                                      onDragStart={(e) => {
+                                        e.dataTransfer.setData("text/plain", note.id);
+                                        e.dataTransfer.effectAllowed = "move";
+                                      }}
+                                      onClick={() => void handleSelectNote(note.id)}
+                                      onContextMenu={(event) => handleOpenNoteMenu(event, note.id)}
+                                      onMouseEnter={() => setHoveredId(note.id)}
+                                      onMouseLeave={() => setHoveredId(null)}
+                                      className={`text-left rounded-lg px-2.5 py-2 transition-all duration-100 cursor-pointer group relative border border-paper-deep/20 hover:border-bamboo/15 hover:shadow-sm ${
+                                        isSelected
+                                          ? "bg-bamboo-mist/70"
+                                          : isHovered
+                                            ? "bg-paper-warm/70"
+                                            : "bg-transparent"
                                       }`}
-                                    />
-
-                                    <div className="flex items-baseline justify-between mb-0.5">
-                                      <span
-                                        className={`text-[13px] font-display font-medium truncate pr-2 transition-colors ${
-                                          isSelected ? "text-bamboo" : "text-ink-soft"
+                                    >
+                                      <div
+                                        className={`absolute left-0 top-1/2 -translate-y-1/2 w-[3px] rounded-r-full bg-bamboo/60 transition-all duration-[600ms] ${
+                                          isSelected ? "h-5 opacity-100" : "h-0 opacity-0"
                                         }`}
-                                      >
-                                        {getDisplayTitle(note, t)}
-                                      </span>
-                                      <span className="text-[10px] text-ink-ghost font-mono tabular-nums shrink-0">
-                                        {formatShortDate(note.updatedAt)}
-                                      </span>
-                                    </div>
+                                      />
 
-                                    <p className="text-[11px] text-ink-ghost leading-relaxed line-clamp-2 group-hover:text-ink-faint transition-colors">
-                                      {note.preview ||
-                                        t("common.blankNote", { defaultValue: "空白笔记" })}
-                                    </p>
+                                      <div className="flex items-baseline justify-between mb-0.5">
+                                        <span
+                                          className={`text-[13px] font-display font-medium truncate pr-2 transition-colors ${
+                                            isSelected ? "text-bamboo" : "text-ink-soft"
+                                          }`}
+                                        >
+                                          {getDisplayTitle(note, t)}
+                                        </span>
+                                        <span className="text-[10px] text-ink-ghost font-mono tabular-nums shrink-0">
+                                          {formatShortDate(note.updatedAt)}
+                                        </span>
+                                      </div>
 
-                                    <div className="flex items-center gap-2 mt-1">
-                                      <span className="text-[10px] text-ink-ghost/60 font-mono tabular-nums">
-                                        {formatTime(note.updatedAt)}
-                                      </span>
-                                      <span className="text-[10px] text-ink-ghost/40">·</span>
-                                      <span className="text-[10px] text-ink-ghost/60 font-mono tabular-nums">
-                                        {t("common.wordCount", {
-                                          count: note.wordCount,
-                                          defaultValue: "{{count}} 字",
-                                        })}
-                                      </span>
-                                      {note.tags && note.tags.length > 0 && (
-                                        <>
-                                          <span className="text-[10px] text-ink-ghost/40">·</span>
-                                          <span className="flex items-center gap-1">
-                                            {note.tags.slice(0, 2).map((tagId) => {
-                                              const tag = tags.find((t) => t.id === tagId);
-                                              if (!tag) return null;
-                                              return (
-                                                <span
-                                                  key={tag.id}
-                                                  className="w-2 h-2 rounded-full shrink-0"
-                                                  style={{ backgroundColor: tag.color }}
-                                                  title={tag.name}
-                                                />
-                                              );
-                                            })}
-                                            {note.tags.length > 2 && (
-                                              <span className="text-[9px] text-ink-ghost/40">
-                                                +{note.tags.length - 2}
-                                              </span>
-                                            )}
-                                          </span>
-                                        </>
-                                      )}
+                                      <p className="text-[11px] text-ink-ghost leading-relaxed line-clamp-2 group-hover:text-ink-faint transition-colors">
+                                        {note.preview ||
+                                          t("common.blankNote", { defaultValue: "空白笔记" })}
+                                      </p>
+
+                                      <div className="flex items-center gap-2 mt-1">
+                                        <span className="text-[10px] text-ink-ghost/60 font-mono tabular-nums">
+                                          {formatTime(note.updatedAt)}
+                                        </span>
+                                        <span className="text-[10px] text-ink-ghost/40">·</span>
+                                        <span className="text-[10px] text-ink-ghost/60 font-mono tabular-nums">
+                                          {t("common.wordCount", {
+                                            count: note.wordCount,
+                                            defaultValue: "{{count}} 字",
+                                          })}
+                                        </span>
+                                        {note.tags && note.tags.length > 0 && (
+                                          <>
+                                            <span className="text-[10px] text-ink-ghost/40">·</span>
+                                            <span className="flex items-center gap-1">
+                                              {note.tags.slice(0, 2).map((tagId) => {
+                                                const tag = tags.find((t) => t.id === tagId);
+                                                if (!tag) return null;
+                                                return (
+                                                  <span
+                                                    key={tag.id}
+                                                    className="w-2 h-2 rounded-full shrink-0"
+                                                    style={{ backgroundColor: tag.color }}
+                                                    title={tag.name}
+                                                  />
+                                                );
+                                              })}
+                                              {note.tags.length > 2 && (
+                                                <span className="text-[9px] text-ink-ghost/40">
+                                                  +{note.tags.length - 2}
+                                                </span>
+                                              )}
+                                            </span>
+                                          </>
+                                        )}
+                                      </div>
                                     </div>
-                                  </div>
-                                );
-                              })
+                                  );
+                                })}
+                              </div>
                             )}
                           </div>
                         </div>
