@@ -97,6 +97,17 @@
       "namePlaceholder": "標籤名稱",
       "confirmDelete": "確認刪除此標籤？"
     },
+    "timeFilter": {
+      "all": "全部時間",
+      "today": "今天",
+      "thisWeek": "本週",
+      "lastWeek": "上週",
+      "thisMonth": "{{month}}",
+      "thisYear": "{{year}}",
+      "custom": "自訂",
+      "startDate": "開始日期",
+      "endDate": "結束日期"
+    },
     "confirm": {
       "unsavedExternalFile": "「{{title}}」有未儲存的變更，是否儲存到原檔案？"
     },

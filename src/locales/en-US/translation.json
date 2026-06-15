@@ -97,6 +97,17 @@
       "namePlaceholder": "Tag name",
       "confirmDelete": "Delete this tag?"
     },
+    "timeFilter": {
+      "all": "All Time",
+      "today": "Today",
+      "thisWeek": "This Week",
+      "lastWeek": "Last Week",
+      "thisMonth": "{{month}}",
+      "thisYear": "{{year}}",
+      "custom": "Custom",
+      "startDate": "Start date",
+      "endDate": "End date"
+    },
     "confirm": {
       "unsavedExternalFile": "\"{{title}}\" has unsaved changes. Save to the original file?"
     },

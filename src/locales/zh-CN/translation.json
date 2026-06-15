@@ -97,6 +97,17 @@
       "namePlaceholder": "标签名称",
       "confirmDelete": "确认删除此标签？"
     },
+    "timeFilter": {
+      "all": "全部时间",
+      "today": "今天",
+      "thisWeek": "本周",
+      "lastWeek": "上周",
+      "thisMonth": "{{month}}",
+      "thisYear": "{{year}}",
+      "custom": "自定义",
+      "startDate": "开始日期",
+      "endDate": "结束日期"
+    },
     "confirm": {
       "unsavedExternalFile": "「{{title}}」有未保存的更改，是否保存到原文件？"
     },
