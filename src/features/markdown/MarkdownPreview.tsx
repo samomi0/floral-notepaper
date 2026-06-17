@@ -202,7 +202,31 @@ const staticComponents: Components = {
       {children}
     </ol>
   ),
-  li: ({ children }) => <li className="text-ink-soft leading-[1.9]">{children}</li>,
+  li: ({ children, node }) => {
+    // Check if this is a task list item (GitHub Flavored Markdown)
+    const firstChild = node?.children?.[0];
+    if (firstChild?.type === "paragraph") {
+      const inputNode = firstChild.children?.[0];
+      if (inputNode?.type === "html" && /^<input type=["']checkbox["']/i.test(inputNode.value || "")) {
+        const isChecked = /checked/i.test(inputNode.value || "");
+        const restContent = (inputNode.value || "").replace(/^<input[^>]*>\s*/i, "");
+        return (
+          <li className={`text-ink-soft leading-[1.9] flex items-start ${isChecked ? "opacity-60 line-through" : ""}`}>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={isChecked}
+                readOnly
+                className="mt-0.5 accent-bamboo cursor-pointer"
+              />
+              <span>{restContent || children}</span>
+            </label>
+          </li>
+        );
+      }
+    }
+    return <li className="text-ink-soft leading-[1.9]">{children}</li>;
+  },
   hr: () => (
     <hr className="my-6 border-none h-px bg-gradient-to-r from-transparent via-paper-deep to-transparent" />
   ),
@@ -270,7 +294,7 @@ const staticComponents: Components = {
     <td className="px-3 py-1.5 border border-paper-deep/35 text-ink-soft">{children}</td>
   ),
   input: ({ checked, ...props }) => (
-    <input {...props} checked={checked} disabled className="mr-1.5 accent-bamboo" />
+    <input {...props} checked={checked} className="mr-1.5 accent-bamboo" />
   ),
 };
 

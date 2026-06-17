@@ -735,6 +735,57 @@ export function NotePad({
                   </span>
                   <div className="flex items-center gap-2">
                     <button
+                      onClick={() => {
+                        const textarea = contentRef.current;
+                        if (!textarea) return;
+                        const start = textarea.selectionStart;
+                        const end = textarea.selectionEnd;
+                        const selectedText = content.slice(start, end);
+                        const lines = selectedText.split("\n");
+                        const toggledLines = lines.map((line) => {
+                          const uncheckedMatch = line.match(/^(\s*)- \[ \] /);
+                          const checkedMatch = line.match(/^(\s*)- \[x\] /i);
+                          if (uncheckedMatch) {
+                            return `${uncheckedMatch[1]}- [x] ${line.slice(uncheckedMatch[0].length)}`;
+                          }
+                          if (checkedMatch) {
+                            return `${checkedMatch[1]}- [ ] ${line.slice(checkedMatch[0].length)}`;
+                          }
+                          return `- [ ] ${line}`;
+                        });
+                        const newText = toggledLines.join("\n");
+                        const prefixLength = start > 0 && content[start - 1] !== "\n" ? "\n" : "";
+                        const suffixLength = end < content.length && content[end] !== "\n" ? "\n" : "";
+                        const before = content.slice(0, start);
+                        const after = content.slice(end);
+                        const finalBefore = prefixLength && !before.endsWith("\n") ? before + prefixLength : before;
+                        const finalAfter = suffixLength && !after.startsWith("\n") ? suffixLength + after : after;
+                        setContent(finalBefore + newText + finalAfter);
+                        setStatus("dirty");
+                        setTimeout(() => {
+                          textarea.focus();
+                          const newEnd = start + prefixLength.length + newText.length + (suffixLength && !after.startsWith("\n") ? suffixLength.length : 0);
+                          textarea.setSelectionRange(start + prefixLength.length, newEnd);
+                        }, 0);
+                      }}
+                      className="w-7 h-7 flex items-center justify-center rounded-lg text-ink-ghost hover:text-ink-soft hover:bg-paper-warm transition-all duration-200 cursor-pointer"
+                      title={t("notepad.tooltip.todo", { defaultValue: "添加/切换待办" })}
+                    >
+                      <svg
+                        width="14"
+                        height="14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path d="M9 11l3 3L22 4" />
+                        <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+                      </svg>
+                    </button>
+                    <button
                       onClick={resetDraft}
                       className="px-4 py-1.5 text-[12px] text-ink-faint hover:text-ink-soft rounded-lg hover:bg-paper-warm transition-all duration-200 cursor-pointer"
                     >
