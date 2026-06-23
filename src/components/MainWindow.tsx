@@ -359,7 +359,10 @@ export function MainWindow({
   const [categories, setCategories] = useState<string[]>([]);
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
   const [filterCategories, setFilterCategories] = useState<Set<string> | null>(null);
-  const [filterTags, setFilterTags] = useState<Set<string> | null>(null);
+  const [filterTags, setFilterTags] = useState<{
+    include: Set<string>;
+    exclude: Set<string>;
+  } | null>(null);
   const [filterTime, setFilterTime] = useState<TimeFilter | null>(null);
   const [filterPickerOpen, setFilterPickerOpen] = useState(false);
   const filterPickerRef = useRef<HTMLButtonElement>(null);
@@ -394,8 +397,11 @@ export function MainWindow({
   const [sidebarWidth, setSidebarWidth] = useState(() =>
     Math.max(280, Math.floor((typeof window !== "undefined" ? window.innerWidth : 900) * 0.5)),
   );
-  const [filterPanelOpen, setFilterPanelOpen] = useState(true);
+  const [filterPanelSlideOpen, setFilterPanelSlideOpen] = useState(false);
+  const [filterPanelMounted, setFilterPanelMounted] = useState(false);
+  const [filterPanelContentVisible, setFilterPanelContentVisible] = useState(false);
   const [isResizingSidebar, setIsResizingSidebar] = useState(false);
+  const sidebarRef = useRef<HTMLDivElement>(null);
   const [splitRatio, setSplitRatio] = useState(0.5);
   const [isResizingSplit, setIsResizingSplit] = useState(false);
   const splitContainerRef = useRef<HTMLDivElement>(null);
@@ -927,6 +933,28 @@ export function MainWindow({
 
     return () => window.clearTimeout(timer);
   }, [mountedSidePanel, visibleSidePanel]);
+
+  useEffect(() => {
+    if (filterPanelSlideOpen) {
+      setFilterPanelMounted(true);
+      setFilterPanelContentVisible(false);
+
+      const frame = window.requestAnimationFrame(() => {
+        setFilterPanelContentVisible(true);
+      });
+
+      return () => window.cancelAnimationFrame(frame);
+    }
+
+    setFilterPanelContentVisible(false);
+    if (!filterPanelMounted) return;
+
+    const timer = window.setTimeout(() => {
+      setFilterPanelMounted(false);
+    }, 320);
+
+    return () => window.clearTimeout(timer);
+  }, [filterPanelSlideOpen, filterPanelMounted]);
 
   useEffect(() => {
     const unlisten = listen("notes-changed", () => {
@@ -1688,10 +1716,16 @@ export function MainWindow({
       result = result.filter((g) => !g.category || filterCategories.has(g.category));
     }
     if (filterTags !== null) {
+      const { include, exclude } = filterTags;
       result = result
         .map((g) => ({
           ...g,
-          notes: g.notes.filter((n) => n.tags?.some((tagId) => filterTags.has(tagId))),
+          notes: g.notes.filter((n) => {
+            const noteTagIds = n.tags ?? [];
+            if (include.size > 0 && !noteTagIds.some((tid) => include.has(tid))) return false;
+            if (exclude.size > 0 && noteTagIds.some((tid) => exclude.has(tid))) return false;
+            return true;
+          }),
         }))
         .filter((g) => g.notes.length > 0 || !g.category);
     }
@@ -1708,15 +1742,19 @@ export function MainWindow({
 
   const handleToggleFilterTag = (tagId: string) => {
     setFilterTags((prev) => {
-      if (prev === null) return new Set([tagId]);
-      const next = new Set(prev);
-      if (next.has(tagId)) {
-        next.delete(tagId);
-        if (next.size === 0) return null;
+      if (prev === null) return { include: new Set([tagId]), exclude: new Set() };
+      const include = new Set(prev.include);
+      const exclude = new Set(prev.exclude);
+      if (include.has(tagId)) {
+        include.delete(tagId);
+        exclude.add(tagId);
+      } else if (exclude.has(tagId)) {
+        exclude.delete(tagId);
       } else {
-        next.add(tagId);
+        include.add(tagId);
       }
-      return next;
+      if (include.size === 0 && exclude.size === 0) return null;
+      return { include, exclude };
     });
   };
 
@@ -1765,9 +1803,12 @@ export function MainWindow({
       setTags((prev) => prev.filter((t) => t.id !== editingTag));
       setFilterTags((prev) => {
         if (prev === null) return null;
-        const next = new Set(prev);
-        next.delete(editingTag);
-        return next.size === 0 ? null : next;
+        const include = new Set(prev.include);
+        const exclude = new Set(prev.exclude);
+        include.delete(editingTag);
+        exclude.delete(editingTag);
+        if (include.size === 0 && exclude.size === 0) return null;
+        return { include, exclude };
       });
       setCurrentNoteTags((prev) => prev.filter((id) => id !== editingTag));
       setEditingTag(null);
@@ -1919,8 +1960,9 @@ export function MainWindow({
     document.body.style.cursor = "col-resize";
 
     const onMouseMove = (e: globalThis.MouseEvent) => {
+      const sidebarLeft = sidebarRef.current?.getBoundingClientRect().left ?? 0;
       const maxWidth = Math.floor(window.innerWidth * 0.6);
-      const newWidth = Math.min(Math.max(e.clientX, 180), maxWidth);
+      const newWidth = Math.min(Math.max(e.clientX - sidebarLeft, 180), maxWidth);
       setSidebarWidth(newWidth);
     };
     const onMouseUp = () => setIsResizingSidebar(false);
@@ -2242,7 +2284,342 @@ export function MainWindow({
         </div>
 
         <div className="relative z-10 flex flex-1 min-h-0">
+          {/* 筛选滑窗 — 从左侧弹出 */}
           <div
+            className={`relative shrink-0 overflow-hidden h-full transition-[width] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+              filterPanelSlideOpen || filterPanelMounted
+                ? "border-r border-paper-deep/20"
+                : "border-r-0"
+            } absolute left-0 top-0 bottom-0 z-30 ${
+              filterPanelSlideOpen ? "w-[320px] shadow-xl" : "w-0"
+            }`}
+          >
+            <div
+              className={`absolute inset-0 w-[320px] h-full transition-[opacity,transform] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+                filterPanelMounted
+                  ? filterPanelContentVisible && filterPanelSlideOpen
+                    ? "translate-x-0 opacity-100"
+                    : "pointer-events-none -translate-x-4 opacity-0"
+                  : "pointer-events-none -translate-x-4 opacity-0"
+              }`}
+            >
+              {filterPanelMounted && (
+                <aside className="w-[320px] h-full shrink-0 border-r border-paper-deep/30 bg-paper/95 backdrop-blur-sm flex flex-col">
+                  <div className="flex items-center justify-between h-11 px-4 border-b border-paper-deep/25">
+                    <h2 className="text-[13px] font-display font-medium text-ink-soft">
+                      {t("main.category.filter", { defaultValue: "筛选" })}
+                    </h2>
+                    <button
+                      type="button"
+                      onClick={() => setFilterPanelSlideOpen(false)}
+                      className="w-7 h-7 flex items-center justify-center rounded-lg text-ink-ghost hover:text-ink-soft hover:bg-paper-warm transition-colors cursor-pointer"
+                      title={t("main.category.closeFilter", { defaultValue: "关闭筛选" })}
+                    >
+                      <svg
+                        width="12"
+                        height="12"
+                        viewBox="0 0 12 12"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.5"
+                        strokeLinecap="round"
+                      >
+                        <path d="M2 2l8 8M10 2l-8 8" />
+                      </svg>
+                    </button>
+                  </div>
+                  <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+                    {/* 分类筛选 */}
+                    <section>
+                      <h3 className="text-[11px] font-body font-medium text-ink-faint mb-2">
+                        {t("main.category.filterByCategory", { defaultValue: "按分类筛选" })}
+                      </h3>
+                      <div className="flex items-center gap-1.5 pb-2 flex-wrap">
+                        <button
+                          onClick={() => setFilterCategories(null)}
+                          className={`shrink-0 px-2.5 py-1 rounded-full text-[11px] font-body transition-colors cursor-pointer ${
+                            filterCategories === null
+                              ? "bg-bamboo-mist/50 text-bamboo"
+                              : "bg-ink-ghost/10 text-ink-ghost hover:bg-ink-ghost/20"
+                          }`}
+                        >
+                          {t("main.category.showAll", { defaultValue: "全部" })}
+                        </button>
+                        <button
+                          onClick={() => setFilterCategories(new Set(categories))}
+                          className="shrink-0 px-2.5 py-1 rounded-full text-[11px] font-body bg-ink-ghost/10 text-ink-ghost hover:bg-ink-ghost/20 transition-colors cursor-pointer"
+                        >
+                          {t("main.category.selectAll", { defaultValue: "全选" })}
+                        </button>
+                        <button
+                          onClick={() =>
+                            setFilterCategories((prev) => {
+                              const all = new Set(categories);
+                              const current = prev ?? all;
+                              const inverted = new Set<string>();
+                              for (const cat of categories) {
+                                if (!current.has(cat)) inverted.add(cat);
+                              }
+                              return inverted.size === 0 || inverted.size === categories.length
+                                ? null
+                                : inverted;
+                            })
+                          }
+                          className="shrink-0 px-2.5 py-1 rounded-full text-[11px] font-body bg-ink-ghost/10 text-ink-ghost hover:bg-ink-ghost/20 transition-colors cursor-pointer"
+                        >
+                          {t("main.category.invert", { defaultValue: "反选" })}
+                        </button>
+                      </div>
+                      <div className="flex-1">
+                        {categories.length === 0 ? (
+                          <div className="text-[11px] text-ink-ghost/50 text-center py-6">
+                            {t("main.category.emptyFilter", { defaultValue: "暂无分类" })}
+                          </div>
+                        ) : (
+                          <div className="flex flex-wrap gap-1.5">
+                            {categories.map((cat) => {
+                              const checked =
+                                filterCategories === null || filterCategories.has(cat);
+                              return (
+                                <button
+                                  key={cat}
+                                  onClick={() => handleToggleFilterCategory(cat)}
+                                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-body transition-colors cursor-pointer ${
+                                    checked
+                                      ? "bg-bamboo-mist/60 text-bamboo"
+                                      : "bg-paper-warm/80 text-ink-ghost hover:bg-paper-warm"
+                                  }`}
+                                >
+                                  <svg
+                                    width="10"
+                                    height="10"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    className="shrink-0 opacity-60"
+                                  >
+                                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                                  </svg>
+                                  <span className="truncate max-w-[160px]">{cat}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    </section>
+                    {/* 标签筛选 */}
+                    {tags.length > 0 && (
+                      <section>
+                        <h3 className="text-[11px] font-body font-medium text-ink-faint mb-2">
+                          {t("main.category.filterByTag", { defaultValue: "按标签筛选" })}
+                        </h3>
+                        <div className="flex items-center gap-1.5 pb-2 flex-wrap">
+                          <button
+                            onClick={() => setFilterTags(null)}
+                            className={`shrink-0 px-2.5 py-1 rounded-full text-[11px] font-body transition-colors cursor-pointer ${
+                              filterTags === null
+                                ? "bg-bamboo-mist/50 text-bamboo"
+                                : "bg-ink-ghost/10 text-ink-ghost hover:bg-ink-ghost/20"
+                            }`}
+                          >
+                            {t("main.category.showAll", { defaultValue: "全部" })}
+                          </button>
+                          <button
+                            onClick={() =>
+                              setFilterTags({
+                                include: new Set(tags.map((t) => t.id)),
+                                exclude: new Set(),
+                              })
+                            }
+                            className="shrink-0 px-2.5 py-1 rounded-full text-[11px] font-body bg-ink-ghost/10 text-ink-ghost hover:bg-ink-ghost/20 transition-colors cursor-pointer"
+                          >
+                            {t("main.category.selectAll", { defaultValue: "全选" })}
+                          </button>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {tags.map((tag) => {
+                            const included = filterTags !== null && filterTags.include.has(tag.id);
+                            const excluded = filterTags !== null && filterTags.exclude.has(tag.id);
+                            const checked = filterTags === null || included;
+                            return (
+                              <button
+                                key={tag.id}
+                                onClick={() => handleToggleFilterTag(tag.id)}
+                                onContextMenu={(e) => {
+                                  e.preventDefault();
+                                  setTagContextMenu({ x: e.clientX, y: e.clientY, tagId: tag.id });
+                                }}
+                                className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-[12px] font-body transition-colors cursor-pointer ${
+                                  excluded
+                                    ? "line-through opacity-50"
+                                    : checked
+                                      ? "ring-1 ring-offset-0"
+                                      : "opacity-60 hover:opacity-100"
+                                }`}
+                                style={{
+                                  backgroundColor: `${tag.color}20`,
+                                  color: excluded ? "var(--color-ink-ghost)" : tag.color,
+                                  ...(checked && !excluded ? { ringColor: tag.color } : {}),
+                                }}
+                              >
+                                <svg
+                                  width="9"
+                                  height="9"
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  className="shrink-0"
+                                >
+                                  <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
+                                  <line x1="7" y1="7" x2="7.01" y2="7" />
+                                </svg>
+                                <span className="truncate max-w-[120px]">{tag.name}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </section>
+                    )}
+                    {/* 时间筛选 */}
+                    <section>
+                      <h3 className="text-[11px] font-body font-medium text-ink-faint mb-2">
+                        {t("main.category.filterByTime", { defaultValue: "按时间筛选" })}
+                      </h3>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <button
+                          onClick={() => setFilterTime(null)}
+                          className={`shrink-0 px-3 py-1.5 rounded-full text-[11px] font-body transition-colors cursor-pointer ${
+                            filterTime === null
+                              ? "bg-bamboo-mist/50 text-bamboo"
+                              : "bg-ink-ghost/10 text-ink-ghost hover:bg-ink-ghost/20"
+                          }`}
+                        >
+                          {t("main.timeFilter.all", { defaultValue: "全部时间" })}
+                        </button>
+                        <button
+                          onClick={() => setFilterTime({ mode: "today" })}
+                          className={`shrink-0 px-3 py-1.5 rounded-full text-[11px] font-body transition-colors cursor-pointer ${
+                            filterTime?.mode === "today"
+                              ? "bg-bamboo-mist/50 text-bamboo"
+                              : "bg-ink-ghost/10 text-ink-ghost hover:bg-ink-ghost/20"
+                          }`}
+                        >
+                          {t("main.timeFilter.today", { defaultValue: "今天" })}
+                        </button>
+                        <button
+                          onClick={() => setFilterTime({ mode: "thisWeek" })}
+                          className={`shrink-0 px-3 py-1.5 rounded-full text-[11px] font-body transition-colors cursor-pointer ${
+                            filterTime?.mode === "thisWeek"
+                              ? "bg-bamboo-mist/50 text-bamboo"
+                              : "bg-ink-ghost/10 text-ink-ghost hover:bg-ink-ghost/20"
+                          }`}
+                        >
+                          {t("main.timeFilter.thisWeek", { defaultValue: "本周" })}
+                        </button>
+                        <button
+                          onClick={() => setFilterTime({ mode: "lastWeek" })}
+                          className={`shrink-0 px-3 py-1.5 rounded-full text-[11px] font-body transition-colors cursor-pointer ${
+                            filterTime?.mode === "lastWeek"
+                              ? "bg-bamboo-mist/50 text-bamboo"
+                              : "bg-ink-ghost/10 text-ink-ghost hover:bg-ink-ghost/20"
+                          }`}
+                        >
+                          {t("main.timeFilter.lastWeek", { defaultValue: "上周" })}
+                        </button>
+                        <button
+                          onClick={() => setFilterTime({ mode: "thisMonth" })}
+                          className={`shrink-0 px-3 py-1.5 rounded-full text-[11px] font-body transition-colors cursor-pointer ${
+                            filterTime?.mode === "thisMonth"
+                              ? "bg-bamboo-mist/50 text-bamboo"
+                              : "bg-ink-ghost/10 text-ink-ghost hover:bg-ink-ghost/20"
+                          }`}
+                        >
+                          {t("main.timeFilter.thisMonth", {
+                            defaultValue: "{{month}}",
+                            month: `${new Date().getMonth() + 1}月`,
+                          })}
+                        </button>
+                        <button
+                          onClick={() => setFilterTime({ mode: "thisYear" })}
+                          className={`shrink-0 px-3 py-1.5 rounded-full text-[11px] font-body transition-colors cursor-pointer ${
+                            filterTime?.mode === "thisYear"
+                              ? "bg-bamboo-mist/50 text-bamboo"
+                              : "bg-ink-ghost/10 text-ink-ghost hover:bg-ink-ghost/20"
+                          }`}
+                        >
+                          {t("main.timeFilter.thisYear", {
+                            defaultValue: "{{year}}",
+                            year: `${new Date().getFullYear()}年`,
+                          })}
+                        </button>
+                        <button
+                          onClick={() =>
+                            setFilterTime((prev) =>
+                              prev?.mode === "custom"
+                                ? null
+                                : { mode: "custom", customStart: "", customEnd: "" },
+                            )
+                          }
+                          className={`shrink-0 px-3 py-1.5 rounded-full text-[11px] font-body transition-colors cursor-pointer ${
+                            filterTime?.mode === "custom"
+                              ? "bg-bamboo-mist/50 text-bamboo"
+                              : "bg-ink-ghost/10 text-ink-ghost hover:bg-ink-ghost/20"
+                          }`}
+                        >
+                          {t("main.timeFilter.custom", { defaultValue: "自定义" })}
+                        </button>
+                      </div>
+                      {filterTime?.mode === "custom" && (
+                        <div className="flex items-center gap-2 mt-3">
+                          <input
+                            type="date"
+                            value={filterTime.customStart ?? ""}
+                            onChange={(e) =>
+                              setFilterTime((prev) =>
+                                prev?.mode === "custom"
+                                  ? { ...prev, customStart: e.target.value }
+                                  : prev,
+                              )
+                            }
+                            className="flex-1 px-2.5 py-1.5 rounded-lg text-[12px] font-body text-ink bg-paper-warm/80 border border-paper-deep/40 focus:border-bamboo/30"
+                            placeholder={t("main.timeFilter.startDate", {
+                              defaultValue: "开始日期",
+                            })}
+                          />
+                          <span className="text-[11px] text-ink-ghost">—</span>
+                          <input
+                            type="date"
+                            value={filterTime.customEnd ?? ""}
+                            onChange={(e) =>
+                              setFilterTime((prev) =>
+                                prev?.mode === "custom"
+                                  ? { ...prev, customEnd: e.target.value }
+                                  : prev,
+                              )
+                            }
+                            className="flex-1 px-2.5 py-1.5 rounded-lg text-[12px] font-body text-ink bg-paper-warm/80 border border-paper-deep/40 focus:border-bamboo/30"
+                            placeholder={t("main.timeFilter.endDate", {
+                              defaultValue: "结束日期",
+                            })}
+                          />
+                        </div>
+                      )}
+                    </section>
+                  </div>
+                </aside>
+              )}
+            </div>
+          </div>
+
+          <div
+            ref={sidebarRef}
             className="border-r border-paper-deep/30 bg-paper/40 shrink-0 overflow-hidden transition-[width] duration-[600ms]"
             style={{ width: sidebarCollapsed ? 0 : sidebarWidth }}
           >
@@ -2308,7 +2685,7 @@ export function MainWindow({
                   <button
                     ref={filterPickerRef}
                     onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => setFilterPanelOpen((prev) => !prev)}
+                    onClick={() => setFilterPanelSlideOpen((prev) => !prev)}
                     onContextMenu={(e) => {
                       e.preventDefault();
                       setFilterCategories(null);
@@ -2465,281 +2842,6 @@ export function MainWindow({
                     placeholder={t("main.category.placeholder", { defaultValue: "输入分类名…" })}
                     className="w-full px-2.5 h-7 rounded-lg text-[12px] font-body text-ink bg-paper-warm/80 border border-paper-deep/40 focus:border-bamboo/30 placeholder:text-ink-ghost/60"
                   />
-                </div>
-              )}
-
-              {filterPanelOpen && (
-                <div className="px-3 pb-2 shrink-0 overflow-y-auto max-h-[40%]">
-                  <div className="flex flex-col rounded-lg border border-paper-deep/30 bg-paper-warm/40 p-2.5">
-                    {/* 分类筛选 */}
-                    <div className="rounded-md border border-paper-deep/20 bg-paper-warm/60 p-2 mb-2">
-                      <div className="flex items-center gap-1.5 pb-2 shrink-0 flex-wrap">
-                        <button
-                          onMouseDown={(e) => e.preventDefault()}
-                          onClick={() => setFilterCategories(null)}
-                          className="shrink-0 px-2.5 py-1 rounded-full text-[10px] font-body bg-ink-ghost/10 text-ink-ghost hover:bg-ink-ghost/20 transition-colors cursor-pointer"
-                        >
-                          {t("main.category.showAll", { defaultValue: "全部" })}
-                        </button>
-                        <button
-                          onMouseDown={(e) => e.preventDefault()}
-                          onClick={() => setFilterCategories(new Set(categories))}
-                          className="shrink-0 px-2.5 py-1 rounded-full text-[10px] font-body bg-ink-ghost/10 text-ink-ghost hover:bg-ink-ghost/20 transition-colors cursor-pointer"
-                        >
-                          {t("main.category.selectAll", { defaultValue: "全选" })}
-                        </button>
-                        <button
-                          onMouseDown={(e) => e.preventDefault()}
-                          onClick={() =>
-                            setFilterCategories((prev) => {
-                              const all = new Set(categories);
-                              const current = prev ?? all;
-                              const inverted = new Set<string>();
-                              for (const cat of categories) {
-                                if (!current.has(cat)) inverted.add(cat);
-                              }
-                              return inverted.size === 0 || inverted.size === categories.length
-                                ? null
-                                : inverted;
-                            })
-                          }
-                          className="shrink-0 px-2.5 py-1 rounded-full text-[10px] font-body bg-ink-ghost/10 text-ink-ghost hover:bg-ink-ghost/20 transition-colors cursor-pointer"
-                        >
-                          {t("main.category.invert", { defaultValue: "反选" })}
-                        </button>
-                      </div>
-                      <div className="flex-1 overflow-y-auto">
-                        {categories.length === 0 ? (
-                          <div className="text-[11px] text-ink-ghost/50 text-center py-4">
-                            {t("main.category.emptyFilter", { defaultValue: "暂无分类" })}
-                          </div>
-                        ) : (
-                          <div className="flex flex-wrap gap-1.5">
-                            {categories.map((cat) => {
-                              const checked =
-                                filterCategories === null || filterCategories.has(cat);
-                              return (
-                                <button
-                                  key={cat}
-                                  onMouseDown={(e) => e.preventDefault()}
-                                  onClick={() => handleToggleFilterCategory(cat)}
-                                  className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-body transition-colors cursor-pointer ${
-                                    checked
-                                      ? "bg-bamboo-mist/50 text-bamboo"
-                                      : "bg-paper-warm/80 text-ink-ghost hover:bg-paper-warm"
-                                  }`}
-                                >
-                                  <svg
-                                    width="10"
-                                    height="10"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    strokeWidth="2"
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    className="shrink-0 opacity-60"
-                                  >
-                                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-                                  </svg>
-                                  <span className="truncate max-w-[100px]">{cat}</span>
-                                </button>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                    {tags.length > 0 && (
-                      <div className="rounded-md border border-paper-deep/20 bg-paper-warm/60 p-2">
-                        <div className="flex items-center gap-1.5 pb-1.5 flex-wrap">
-                          <button
-                            onMouseDown={(e) => e.preventDefault()}
-                            onClick={() => setFilterTags(null)}
-                            className="shrink-0 px-2 py-0.5 rounded-full text-[9px] font-body bg-ink-ghost/10 text-ink-ghost hover:bg-ink-ghost/20 transition-colors cursor-pointer"
-                          >
-                            {t("main.category.showAll", { defaultValue: "全部" })}
-                          </button>
-                          <button
-                            onMouseDown={(e) => e.preventDefault()}
-                            onClick={() => setFilterTags(new Set(tags.map((t) => t.id)))}
-                            className="shrink-0 px-2 py-0.5 rounded-full text-[9px] font-body bg-ink-ghost/10 text-ink-ghost hover:bg-ink-ghost/20 transition-colors cursor-pointer"
-                          >
-                            {t("main.category.selectAll", { defaultValue: "全选" })}
-                          </button>
-                        </div>
-                        <div className="flex flex-wrap gap-1">
-                          {tags.map((tag) => {
-                            const checked = filterTags === null || filterTags.has(tag.id);
-                            return (
-                              <button
-                                key={tag.id}
-                                onMouseDown={(e) => e.preventDefault()}
-                                onClick={() => handleToggleFilterTag(tag.id)}
-                                onContextMenu={(e) => {
-                                  e.preventDefault();
-                                  setTagContextMenu({ x: e.clientX, y: e.clientY, tagId: tag.id });
-                                }}
-                                className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-body transition-colors cursor-pointer ${
-                                  checked ? "ring-1 ring-offset-0" : "opacity-60 hover:opacity-100"
-                                }`}
-                                style={{
-                                  backgroundColor: `${tag.color}20`,
-                                  color: tag.color,
-                                  ...(checked ? { ringColor: tag.color } : {}),
-                                }}
-                              >
-                                <svg
-                                  width="8"
-                                  height="8"
-                                  viewBox="0 0 24 24"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  strokeWidth="2"
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  className="shrink-0"
-                                >
-                                  <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
-                                  <line x1="7" y1="7" x2="7.01" y2="7" />
-                                </svg>
-                                <span className="truncate max-w-[80px]">{tag.name}</span>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-                    {/* 时间筛选 */}
-                    <div className="rounded-md border border-paper-deep/20 bg-paper-warm/60 p-2 mt-2">
-                      <div className="flex items-center gap-1.5 pb-1.5 shrink-0 flex-wrap">
-                        <button
-                          onMouseDown={(e) => e.preventDefault()}
-                          onClick={() => setFilterTime(null)}
-                          className={`shrink-0 px-2.5 py-1 rounded-full text-[10px] font-body transition-colors cursor-pointer ${
-                            filterTime === null
-                              ? "bg-bamboo-mist/50 text-bamboo"
-                              : "bg-ink-ghost/10 text-ink-ghost hover:bg-ink-ghost/20"
-                          }`}
-                        >
-                          {t("main.timeFilter.all", { defaultValue: "全部时间" })}
-                        </button>
-                        <button
-                          onMouseDown={(e) => e.preventDefault()}
-                          onClick={() => setFilterTime({ mode: "today" })}
-                          className={`shrink-0 px-2.5 py-1 rounded-full text-[10px] font-body transition-colors cursor-pointer ${
-                            filterTime?.mode === "today"
-                              ? "bg-bamboo-mist/50 text-bamboo"
-                              : "bg-ink-ghost/10 text-ink-ghost hover:bg-ink-ghost/20"
-                          }`}
-                        >
-                          {t("main.timeFilter.today", { defaultValue: "今天" })}
-                        </button>
-                        <button
-                          onMouseDown={(e) => e.preventDefault()}
-                          onClick={() => setFilterTime({ mode: "thisWeek" })}
-                          className={`shrink-0 px-2.5 py-1 rounded-full text-[10px] font-body transition-colors cursor-pointer ${
-                            filterTime?.mode === "thisWeek"
-                              ? "bg-bamboo-mist/50 text-bamboo"
-                              : "bg-ink-ghost/10 text-ink-ghost hover:bg-ink-ghost/20"
-                          }`}
-                        >
-                          {t("main.timeFilter.thisWeek", { defaultValue: "本周" })}
-                        </button>
-                        <button
-                          onMouseDown={(e) => e.preventDefault()}
-                          onClick={() => setFilterTime({ mode: "lastWeek" })}
-                          className={`shrink-0 px-2.5 py-1 rounded-full text-[10px] font-body transition-colors cursor-pointer ${
-                            filterTime?.mode === "lastWeek"
-                              ? "bg-bamboo-mist/50 text-bamboo"
-                              : "bg-ink-ghost/10 text-ink-ghost hover:bg-ink-ghost/20"
-                          }`}
-                        >
-                          {t("main.timeFilter.lastWeek", { defaultValue: "上周" })}
-                        </button>
-                        <button
-                          onMouseDown={(e) => e.preventDefault()}
-                          onClick={() => setFilterTime({ mode: "thisMonth" })}
-                          className={`shrink-0 px-2.5 py-1 rounded-full text-[10px] font-body transition-colors cursor-pointer ${
-                            filterTime?.mode === "thisMonth"
-                              ? "bg-bamboo-mist/50 text-bamboo"
-                              : "bg-ink-ghost/10 text-ink-ghost hover:bg-ink-ghost/20"
-                          }`}
-                        >
-                          {t("main.timeFilter.thisMonth", {
-                            defaultValue: "{{month}}",
-                            month: `${new Date().getMonth() + 1}月`,
-                          })}
-                        </button>
-                        <button
-                          onMouseDown={(e) => e.preventDefault()}
-                          onClick={() => setFilterTime({ mode: "thisYear" })}
-                          className={`shrink-0 px-2.5 py-1 rounded-full text-[10px] font-body transition-colors cursor-pointer ${
-                            filterTime?.mode === "thisYear"
-                              ? "bg-bamboo-mist/50 text-bamboo"
-                              : "bg-ink-ghost/10 text-ink-ghost hover:bg-ink-ghost/20"
-                          }`}
-                        >
-                          {t("main.timeFilter.thisYear", {
-                            defaultValue: "{{year}}",
-                            year: `${new Date().getFullYear()}年`,
-                          })}
-                        </button>
-                        <button
-                          onMouseDown={(e) => e.preventDefault()}
-                          onClick={() =>
-                            setFilterTime((prev) =>
-                              prev?.mode === "custom"
-                                ? null
-                                : { mode: "custom", customStart: "", customEnd: "" },
-                            )
-                          }
-                          className={`shrink-0 px-2.5 py-1 rounded-full text-[10px] font-body transition-colors cursor-pointer ${
-                            filterTime?.mode === "custom"
-                              ? "bg-bamboo-mist/50 text-bamboo"
-                              : "bg-ink-ghost/10 text-ink-ghost hover:bg-ink-ghost/20"
-                          }`}
-                        >
-                          {t("main.timeFilter.custom", { defaultValue: "自定义" })}
-                        </button>
-                      </div>
-                      {filterTime?.mode === "custom" && (
-                        <div className="flex items-center gap-1.5 mt-2">
-                          <input
-                            type="date"
-                            value={filterTime.customStart ?? ""}
-                            onChange={(e) =>
-                              setFilterTime((prev) =>
-                                prev?.mode === "custom"
-                                  ? { ...prev, customStart: e.target.value }
-                                  : prev,
-                              )
-                            }
-                            className="flex-1 px-2 py-1 rounded-md text-[11px] font-body text-ink bg-paper-warm/80 border border-paper-deep/40 focus:border-bamboo/30"
-                            placeholder={t("main.timeFilter.startDate", {
-                              defaultValue: "开始日期",
-                            })}
-                          />
-                          <span className="text-[10px] text-ink-ghost">—</span>
-                          <input
-                            type="date"
-                            value={filterTime.customEnd ?? ""}
-                            onChange={(e) =>
-                              setFilterTime((prev) =>
-                                prev?.mode === "custom"
-                                  ? { ...prev, customEnd: e.target.value }
-                                  : prev,
-                              )
-                            }
-                            className="flex-1 px-2 py-1 rounded-md text-[11px] font-body text-ink bg-paper-warm/80 border border-paper-deep/40 focus:border-bamboo/30"
-                            placeholder={t("main.timeFilter.endDate", {
-                              defaultValue: "结束日期",
-                            })}
-                          />
-                        </div>
-                      )}
-                    </div>
-                  </div>
                 </div>
               )}
 
@@ -3037,7 +3139,7 @@ export function MainWindow({
 
                         <div className={`category-body ${isCollapsed ? "" : "expanded"}`}>
                           <div
-                            className="category-body-inner bg-bamboo/[0.03] border border-t-0 border-bamboo/10 rounded-b-lg pb-1 pt-1 max-h-[320px] overflow-y-auto"
+                            className="category-body-inner bg-bamboo/[0.03] border border-t-0 border-bamboo/10 rounded-b-lg pb-1 pt-1 overflow-y-auto"
                             onDragOver={(e) => {
                               e.preventDefault();
                               e.dataTransfer.dropEffect = "move";
