@@ -2,13 +2,23 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { MouseEvent } from "react";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { createNote, getErrorMessage, getNote, listNotes, updateNote } from "../features/notes/api";
+import {
+  createNote,
+  deleteNote,
+  getErrorMessage,
+  getNote,
+  listCategories,
+  listNotes,
+  listTags,
+  moveNoteCategory,
+  updateNote,
+} from "../features/notes/api";
 import { useImagePaste } from "../features/images/useImagePaste";
 import { useImageBaseDir } from "../features/images/useImageBaseDir";
 import { reportInstallPreparation } from "../features/update/api";
 import type { UpdateInstallPrepareRequest } from "../features/update/types";
 import { showToast } from "./Toast";
-import type { Note, NoteMetadata } from "../features/notes/types";
+import type { Note, NoteMetadata, Tag } from "../features/notes/types";
 import { countNoteChars, metadataFromNote } from "../features/notes/noteUtils";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -105,6 +115,21 @@ function SurfaceResizeHandles() {
   );
 }
 
+function popupStyle(
+  buttonRef: React.RefObject<HTMLButtonElement | null>,
+  estimatedHeight: number,
+  marginLeft: number,
+): React.CSSProperties {
+  const rect = buttonRef.current?.getBoundingClientRect();
+  if (!rect) return { left: 0, top: 0 };
+  const spaceBelow = window.innerHeight - rect.bottom;
+  const left = Math.min(rect.left, window.innerWidth - marginLeft);
+  if (spaceBelow >= estimatedHeight + 8) {
+    return { left, top: rect.bottom + 4 };
+  }
+  return { left, bottom: window.innerHeight - rect.top + 4 };
+}
+
 export function NotePad({
   initialNoteId,
   initialSurfaceMode = "pad",
@@ -129,6 +154,17 @@ export function NotePad({
     resolveTileColor("system", normalizeTileColor(initialTileColor)),
   );
   const [isExiting, setIsExiting] = useState(false);
+  const [currentNoteTags, setCurrentNoteTags] = useState<string[]>([]);
+  const [availableCategories, setAvailableCategories] = useState<string[]>([]);
+  const [availableTags, setAvailableTags] = useState<Tag[]>([]);
+  const [categoryPickerOpen, setCategoryPickerOpen] = useState(false);
+  const categoryPickerRef = useRef<HTMLButtonElement>(null);
+  const [tagPickerOpen, setTagPickerOpen] = useState(false);
+  const tagPickerRef = useRef<HTMLButtonElement>(null);
+  const [deleteConfirming, setDeleteConfirming] = useState(false);
+  const deleteConfirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const currentNoteTagsRef = useRef(currentNoteTags);
+  currentNoteTagsRef.current = currentNoteTags;
   const titleRef = useRef<HTMLInputElement>(null);
   const contentRef = useRef<HTMLTextAreaElement>(null);
   const windowLabelRef = useRef("");
@@ -173,6 +209,7 @@ export function NotePad({
     setEditingNoteId(note.id);
     setTitle(note.title);
     setContent(note.content);
+    setCurrentNoteTags(note.tags ?? []);
     setMode("new");
     setStatus("opened");
   }, []);
@@ -182,7 +219,12 @@ export function NotePad({
 
     async function bootstrap() {
       try {
-        const [loadedConfig] = await Promise.all([getConfig(), refreshNotes()]);
+        const [loadedConfig, loadedCategories, loadedTags] = await Promise.all([
+          getConfig(),
+          listCategories(),
+          listTags(),
+          refreshNotes(),
+        ]);
         if (!cancelled) {
           setNoteSurfaceAutoSave(loadedConfig.noteSurfaceAutoSave);
           setSurfaceFontSize(loadedConfig.surfaceFontSize ?? 14);
@@ -192,6 +234,8 @@ export function NotePad({
           setTileColor(
             resolveTileColor(loadedConfig.tileColorMode ?? "system", loadedConfig.tileColor),
           );
+          setAvailableCategories(loadedCategories);
+          setAvailableTags(loadedTags);
         }
         if (initialNoteId) {
           const note = await getNote(initialNoteId);
@@ -211,6 +255,12 @@ export function NotePad({
   useEffect(() => {
     const unlisten = listen("notes-changed", () => {
       void refreshNotes().catch(() => undefined);
+      void listCategories()
+        .then(setAvailableCategories)
+        .catch(() => undefined);
+      void listTags()
+        .then(setAvailableTags)
+        .catch(() => undefined);
     });
     return () => {
       void unlisten.then((fn) => fn());
@@ -232,6 +282,14 @@ export function NotePad({
     });
     return () => {
       cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (deleteConfirmTimerRef.current) {
+        clearTimeout(deleteConfirmTimerRef.current);
+      }
     };
   }, []);
 
@@ -285,6 +343,14 @@ export function NotePad({
       setEditingNoteId(null);
       setTitle(todayStr);
       setContent("");
+      setCurrentNoteTags([]);
+      setCategoryPickerOpen(false);
+      setTagPickerOpen(false);
+      setDeleteConfirming(false);
+      if (deleteConfirmTimerRef.current) {
+        clearTimeout(deleteConfirmTimerRef.current);
+        deleteConfirmTimerRef.current = null;
+      }
       setMode("new");
       setStatus("empty");
       setIsExiting(false);
@@ -302,7 +368,13 @@ export function NotePad({
   const saveNote = useCallback(async () => {
     const existingCategory = notes.find((n) => n.id === editingNoteId)?.category ?? "";
     const resolvedTitle = title || new Date().toISOString().slice(0, 10);
-    const request = { title: resolvedTitle, content, category: existingCategory };
+    const tagsSnapshot = currentNoteTagsRef.current;
+    const request = {
+      title: resolvedTitle,
+      content,
+      category: existingCategory,
+      tags: tagsSnapshot,
+    };
     const note = editingNoteId
       ? await updateNote(editingNoteId, request)
       : await createNote(request);
@@ -441,6 +513,80 @@ export function NotePad({
     }
   }, [saveNote]);
 
+  const handleMoveCategory = useCallback(
+    async (targetCategory: string) => {
+      setCategoryPickerOpen(false);
+      if (editingNoteId) {
+        try {
+          await moveNoteCategory(editingNoteId, targetCategory);
+          void refreshNotes().catch(() => undefined);
+        } catch (error) {
+          showToast(getErrorMessage(error));
+        }
+      }
+    },
+    [editingNoteId, refreshNotes],
+  );
+
+  const handleToggleNoteTag = useCallback((tagId: string) => {
+    setCurrentNoteTags((prev) => {
+      if (prev.includes(tagId)) {
+        return prev.filter((id) => id !== tagId);
+      }
+      return [...prev, tagId];
+    });
+    setStatus("dirty");
+  }, []);
+
+  const closePopups = useCallback(() => {
+    setCategoryPickerOpen(false);
+    setTagPickerOpen(false);
+  }, []);
+
+  useEffect(() => {
+    function handleMouseDown() {
+      closePopups();
+    }
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") closePopups();
+    }
+    document.addEventListener("mousedown", handleMouseDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handleMouseDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [closePopups]);
+
+  const handleDelete = useCallback(async () => {
+    if (!editingNoteId) {
+      resetDraft();
+      return;
+    }
+
+    if (!deleteConfirming) {
+      setDeleteConfirming(true);
+      deleteConfirmTimerRef.current = setTimeout(() => {
+        setDeleteConfirming(false);
+      }, 3000);
+      return;
+    }
+
+    if (deleteConfirmTimerRef.current) {
+      clearTimeout(deleteConfirmTimerRef.current);
+      deleteConfirmTimerRef.current = null;
+    }
+
+    try {
+      await deleteNote(editingNoteId);
+      void refreshNotes().catch(() => undefined);
+      resetDraft();
+    } catch (error) {
+      setDeleteConfirming(false);
+      showToast(getErrorMessage(error));
+    }
+  }, [deleteConfirming, editingNoteId, refreshNotes]);
+
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
       if ((event.ctrlKey || event.metaKey) && event.key === "s") {
@@ -476,6 +622,10 @@ export function NotePad({
 
   const handleClose = useCallback(() => {
     setIsExiting(true);
+    if (deleteConfirmTimerRef.current) {
+      clearTimeout(deleteConfirmTimerRef.current);
+      deleteConfirmTimerRef.current = null;
+    }
     const closeSurface = surfaceMode === "tile" ? closeCurrentWindow : recycleCurrentNotepad;
     void closeSurface().catch((error) => {
       setIsExiting(false);
@@ -548,8 +698,12 @@ export function NotePad({
     setEditingNoteId(null);
     setTitle(todayStr);
     setContent("");
+    setCurrentNoteTags([]);
     setMode("new");
     setStatus("empty");
+    setDeleteConfirming(false);
+    setCategoryPickerOpen(false);
+    setTagPickerOpen(false);
   };
 
   const isTile = surfaceMode === "tile";
@@ -735,10 +889,16 @@ export function NotePad({
                   </span>
                   <div className="flex items-center gap-2">
                     <button
-                      onClick={resetDraft}
-                      className="px-4 py-1.5 text-[12px] text-ink-faint hover:text-ink-soft rounded-lg hover:bg-paper-warm transition-all duration-200 cursor-pointer"
+                      onClick={() => void handleDelete()}
+                      className={`px-4 py-1.5 text-[12px] rounded-lg transition-all duration-200 cursor-pointer ${
+                        deleteConfirming && editingNoteId
+                          ? "text-cloud bg-red-400 hover:bg-red-500"
+                          : "text-ink-faint hover:text-red-400 hover:bg-danger-bg/60"
+                      }`}
                     >
-                      {t("notepad.button.clear", { defaultValue: "清空" })}
+                      {deleteConfirming && editingNoteId
+                        ? t("notepad.button.confirmDelete", { defaultValue: "确认删除？" })
+                        : t("notepad.button.delete", { defaultValue: "删除" })}
                     </button>
                     <button
                       onClick={() => void handleSave()}
@@ -748,6 +908,95 @@ export function NotePad({
                     </button>
                   </div>
                 </div>
+
+                {editingNoteId && (
+                  <div className="flex items-center gap-2 pt-2 shrink-0">
+                    <button
+                      ref={categoryPickerRef}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setCategoryPickerOpen((prev) => !prev);
+                        setTagPickerOpen(false);
+                      }}
+                      className="flex items-center gap-1 h-[22px] px-1.5 rounded-md border border-paper-deep/50 bg-paper-warm/60 hover:border-bamboo/40 hover:bg-bamboo-mist/30 transition-colors cursor-pointer shrink-0"
+                      title={t("main.category.changeCategory", { defaultValue: "切换分类" })}
+                    >
+                      <svg
+                        width="10"
+                        height="10"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className="text-ink-ghost shrink-0"
+                      >
+                        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                      </svg>
+                      <span className="text-[10px] text-ink-ghost truncate max-w-[100px]">
+                        {notes.find((n) => n.id === editingNoteId)?.category ||
+                          t("main.category.uncategorized", { defaultValue: "未分类" })}
+                      </span>
+                      <svg
+                        width="8"
+                        height="8"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="3"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className="text-ink-ghost/50 shrink-0"
+                      >
+                        <polyline points="6 9 12 15 18 9" />
+                      </svg>
+                    </button>
+                    <button
+                      ref={tagPickerRef}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setTagPickerOpen((prev) => !prev);
+                        setCategoryPickerOpen(false);
+                      }}
+                      className="flex items-center gap-1 h-[22px] px-1.5 rounded-md border border-paper-deep/50 bg-paper-warm/60 hover:border-bamboo/40 hover:bg-bamboo-mist/30 transition-colors cursor-pointer shrink-0"
+                      title={t("main.tag.changeTag", { defaultValue: "切换标签" })}
+                    >
+                      <svg
+                        width="10"
+                        height="10"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className="text-ink-ghost shrink-0"
+                      >
+                        <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
+                        <line x1="7" y1="7" x2="7.01" y2="7" />
+                      </svg>
+                      <span className="text-[10px] text-ink-ghost truncate max-w-[80px]">
+                        {currentNoteTags.length > 0
+                          ? `${currentNoteTags.length} 个标签`
+                          : t("main.tag.noTag", { defaultValue: "标签" })}
+                      </span>
+                      <svg
+                        width="8"
+                        height="8"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="3"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className="text-ink-ghost/50 shrink-0"
+                      >
+                        <polyline points="6 9 12 15 18 9" />
+                      </svg>
+                    </button>
+                  </div>
+                )}
               </div>
             ) : (
               <NotepadOpenPanel
@@ -757,6 +1006,89 @@ export function NotePad({
             )}
           </>
           <SurfaceResizeHandles />
+        </div>
+      )}
+
+      {categoryPickerOpen && editingNoteId && (
+        <div
+          className="popup-menu fixed z-[9999] min-w-[90px] bg-cloud/95 backdrop-blur-sm border border-paper-deep/50 rounded-lg select-none animate-menu-enter"
+          style={popupStyle(categoryPickerRef, 180, 98)}
+          onMouseDown={(event) => event.stopPropagation()}
+        >
+          <button
+            onClick={() => void handleMoveCategory("")}
+            className="w-full text-left px-3 py-1.5 text-[12px] font-body text-ink-soft hover:bg-bamboo-mist/60 hover:text-bamboo transition-colors cursor-pointer"
+          >
+            {t("main.category.uncategorized", { defaultValue: "未分类" })}
+          </button>
+          {availableCategories.length > 0 && (
+            <div className="max-h-[140px] overflow-y-auto border-t border-paper-deep/30">
+              {availableCategories.map((cat) => (
+                <button
+                  key={cat}
+                  onClick={() => void handleMoveCategory(cat)}
+                  className="w-full text-left px-3 py-1.5 text-[12px] font-body text-ink-soft hover:bg-bamboo-mist/60 hover:text-bamboo transition-colors cursor-pointer"
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {tagPickerOpen && editingNoteId && (
+        <div
+          className="popup-menu fixed z-[9999] min-w-[140px] bg-cloud/95 backdrop-blur-sm border border-paper-deep/50 rounded-lg select-none animate-menu-enter"
+          style={popupStyle(tagPickerRef, 200, 148)}
+          onMouseDown={(event) => event.stopPropagation()}
+        >
+          {availableTags.length === 0 ? (
+            <div className="px-3 py-2 text-[11px] text-ink-ghost/50 text-center">
+              {t("main.tag.empty", { defaultValue: "暂无标签" })}
+            </div>
+          ) : (
+            <div className="max-h-[160px] overflow-y-auto py-1.5">
+              {availableTags.map((tag) => {
+                const checked = currentNoteTags.includes(tag.id);
+                return (
+                  <button
+                    key={tag.id}
+                    onClick={() => handleToggleNoteTag(tag.id)}
+                    className="w-full flex items-center gap-2 px-3 py-1.5 text-[12px] font-body hover:bg-bamboo-mist/60 transition-colors cursor-pointer"
+                  >
+                    <svg
+                      width="12"
+                      height="12"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className={`shrink-0 ${checked ? "text-bamboo" : "text-ink-ghost/30"}`}
+                    >
+                      {checked ? (
+                        <>
+                          <rect x="3" y="3" width="18" height="18" rx="3" />
+                          <polyline points="8 12 11 15 16 9" />
+                        </>
+                      ) : (
+                        <rect x="3" y="3" width="18" height="18" rx="3" />
+                      )}
+                    </svg>
+                    <span
+                      className="w-2.5 h-2.5 rounded-full shrink-0"
+                      style={{ backgroundColor: tag.color }}
+                    />
+                    <span className={`truncate ${checked ? "text-bamboo" : "text-ink-soft"}`}>
+                      {tag.name}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
     </div>

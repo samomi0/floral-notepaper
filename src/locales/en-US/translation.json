@@ -201,7 +201,9 @@
   },
   "notepad": {
     "button": {
-      "clear": "Clear"
+      "clear": "Clear",
+      "delete": "Delete",
+      "confirmDelete": "Confirm delete?"
     },
     "emptyState": "No notes available",
     "search": {

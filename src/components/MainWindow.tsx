@@ -314,6 +314,21 @@ function useLoadEpoch(): LoadEpoch {
   );
 }
 
+function popupStyle(
+  buttonRef: React.RefObject<HTMLButtonElement | null>,
+  estimatedHeight: number,
+  marginLeft: number,
+): React.CSSProperties {
+  const rect = buttonRef.current?.getBoundingClientRect();
+  if (!rect) return { left: 0, top: 0 };
+  const spaceBelow = window.innerHeight - rect.bottom;
+  const left = Math.min(rect.left, window.innerWidth - marginLeft);
+  if (spaceBelow >= estimatedHeight + 8) {
+    return { left, top: rect.bottom + 4 };
+  }
+  return { left, bottom: window.innerHeight - rect.top + 4 };
+}
+
 interface MainWindowProps {
   initialSettingsOpen?: boolean;
   initialConfig?: AppConfig;
@@ -4122,18 +4137,8 @@ export function MainWindow({
 
       {categoryPickerOpen && selectedNote && (
         <div
-          className="popup-menu fixed z-[9999] min-w-[90px] py-1.5 bg-cloud/95 backdrop-blur-sm border border-paper-deep/50 rounded-lg overflow-hidden select-none animate-menu-enter"
-          style={{
-            left: categoryPickerRef.current
-              ? Math.min(
-                  categoryPickerRef.current.getBoundingClientRect().left,
-                  window.innerWidth - 98,
-                )
-              : 0,
-            top: categoryPickerRef.current
-              ? categoryPickerRef.current.getBoundingClientRect().bottom + 4
-              : 0,
-          }}
+          className="popup-menu fixed z-[9999] min-w-[90px] bg-cloud/95 backdrop-blur-sm border border-paper-deep/50 rounded-lg select-none animate-menu-enter"
+          style={popupStyle(categoryPickerRef, 220, 98)}
           onMouseDown={(event) => event.stopPropagation()}
         >
           <button
@@ -4145,73 +4150,75 @@ export function MainWindow({
           >
             {t("main.category.uncategorized", { defaultValue: "未分类" })}
           </button>
-          {categories.map((cat) => (
-            <button
-              key={cat}
-              onClick={() => {
-                void handleMoveNote(selectedNote.id, cat);
-                setCategoryPickerOpen(false);
-              }}
-              className="w-full text-left px-3 py-1.5 text-[12px] font-body text-ink-soft hover:bg-bamboo-mist/60 hover:text-bamboo transition-colors cursor-pointer"
-            >
-              {cat}
-            </button>
-          ))}
+          {categories.length > 0 && (
+            <div className="max-h-[180px] overflow-y-auto border-t border-paper-deep/30">
+              {categories.map((cat) => (
+                <button
+                  key={cat}
+                  onClick={() => {
+                    void handleMoveNote(selectedNote.id, cat);
+                    setCategoryPickerOpen(false);
+                  }}
+                  className="w-full text-left px-3 py-1.5 text-[12px] font-body text-ink-soft hover:bg-bamboo-mist/60 hover:text-bamboo transition-colors cursor-pointer"
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
       {tagPickerOpen && selectedNote && (
         <div
-          className="popup-menu fixed z-[9999] min-w-[140px] py-1.5 bg-cloud/95 backdrop-blur-sm border border-paper-deep/50 rounded-lg overflow-hidden select-none animate-menu-enter"
-          style={{
-            left: tagPickerRef.current
-              ? Math.min(tagPickerRef.current.getBoundingClientRect().left, window.innerWidth - 148)
-              : 0,
-            top: tagPickerRef.current ? tagPickerRef.current.getBoundingClientRect().bottom + 4 : 0,
-          }}
+          className="popup-menu fixed z-[9999] min-w-[140px] bg-cloud/95 backdrop-blur-sm border border-paper-deep/50 rounded-lg select-none animate-menu-enter"
+          style={popupStyle(tagPickerRef, 240, 148)}
           onMouseDown={(event) => event.stopPropagation()}
         >
-          {tags.map((tag) => {
-            const checked = currentNoteTags.includes(tag.id);
-            return (
-              <button
-                key={tag.id}
-                onClick={() => handleToggleNoteTag(tag.id)}
-                className="w-full flex items-center gap-2 px-3 py-1.5 text-[12px] font-body hover:bg-bamboo-mist/60 transition-colors cursor-pointer"
-              >
-                <svg
-                  width="12"
-                  height="12"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  className={`shrink-0 ${checked ? "text-bamboo" : "text-ink-ghost/30"}`}
-                >
-                  {checked ? (
-                    <>
-                      <rect x="3" y="3" width="18" height="18" rx="3" />
-                      <polyline points="8 12 11 15 16 9" />
-                    </>
-                  ) : (
-                    <rect x="3" y="3" width="18" height="18" rx="3" />
-                  )}
-                </svg>
-                <span
-                  className="w-2.5 h-2.5 rounded-full shrink-0"
-                  style={{ backgroundColor: tag.color }}
-                />
-                <span className={`truncate ${checked ? "text-bamboo" : "text-ink-soft"}`}>
-                  {tag.name}
-                </span>
-              </button>
-            );
-          })}
-          {tags.length === 0 && (
+          {tags.length === 0 ? (
             <div className="px-3 py-2 text-[11px] text-ink-ghost/50 text-center">
               {t("main.tag.empty", { defaultValue: "暂无标签" })}
+            </div>
+          ) : (
+            <div className="max-h-[200px] overflow-y-auto py-1.5">
+              {tags.map((tag) => {
+                const checked = currentNoteTags.includes(tag.id);
+                return (
+                  <button
+                    key={tag.id}
+                    onClick={() => handleToggleNoteTag(tag.id)}
+                    className="w-full flex items-center gap-2 px-3 py-1.5 text-[12px] font-body hover:bg-bamboo-mist/60 transition-colors cursor-pointer"
+                  >
+                    <svg
+                      width="12"
+                      height="12"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className={`shrink-0 ${checked ? "text-bamboo" : "text-ink-ghost/30"}`}
+                    >
+                      {checked ? (
+                        <>
+                          <rect x="3" y="3" width="18" height="18" rx="3" />
+                          <polyline points="8 12 11 15 16 9" />
+                        </>
+                      ) : (
+                        <rect x="3" y="3" width="18" height="18" rx="3" />
+                      )}
+                    </svg>
+                    <span
+                      className="w-2.5 h-2.5 rounded-full shrink-0"
+                      style={{ backgroundColor: tag.color }}
+                    />
+                    <span className={`truncate ${checked ? "text-bamboo" : "text-ink-soft"}`}>
+                      {tag.name}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>
