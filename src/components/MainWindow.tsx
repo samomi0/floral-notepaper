@@ -3779,7 +3779,7 @@ export function MainWindow({
                           disabled={!selectedId}
                         />
                         {contentLinks.length > 0 && (
-                          <div className="flex gap-1.5 mt-2 flex-wrap">
+                          <div className="flex gap-1.5 mt-2 pb-1 overflow-x-auto">
                             {contentLinks.map((link, i) => {
                               const color = linkColors[link.url];
                               return (
